@@ -1,0 +1,88 @@
+You are an expert full-stack Python developer with strong experience in web scraping, Google Sheets API, email automation and scheduled scripts.
+Task: Create a complete, production-ready, well-documented Python 3.11+ script for a daily scraper bot that does the following:
+Requirements:
+
+Once per day the script must:
+Scrape all apartment rental listings (only "апартамент" / квартир) from https://imoti.bg/наеми/
+The main page has pagination: https://imoti.bg/наеми/page:1 , https://imoti.bg/наеми/page:2 … up to ~26 pages.
+Collect ONLY ads where the title contains "апартамент" (едностаен, двустаен, тристаен, etc.).
+
+For each listing on the list page extract:
+Unique Ad ID (the number in the URL, e.g. 513894 from "...-513894.htm")
+Title
+Price (with currency)
+Location
+Size (кв.м.)
+Full link to the detail page
+
+Google Sheets integration (use gspread + google-auth):
+Sheet name (configurable via .env): "Imoti_BG_Rentals"
+Three tabs (worksheets):
+New_Ads (columns in this exact order):
+Date (YYYY-MM-DD)
+Ad_ID
+Title
+Price
+Location
+Size
+Link
+Phone
+Type ("приватний" або "від агенції")
+
+Agencies – one column "Phone" (user will manually add agency phone numbers here, e.g. 0894860795, 070011777 etc.)
+Processed_IDs – one column "Ad_ID" (to remember which ads we already saw)
+
+
+Logic for "new" ads and classification:
+Load all existing Ad_ID from "Processed_IDs" into a set.
+For every scraped ad:
+If Ad_ID already in Processed_IDs → skip.
+If new → go to the detail page.
+On the detail page extract the phone number (it is a clickable  link, usually under "### Частно лице" or agency name).
+Normalize phone (remove all non-digits, keep only Bulgarian format, e.g. 0894860795).
+Check if this normalized phone exists in the "Agencies" sheet.
+If yes → Type = "від агенції"
+If no → Type = "приватний"
+
+Add the row to New_Ads (with today's date).
+Add Ad_ID to Processed_IDs.
+
+
+
+
+After scraping:
+If there are any new ads today:
+Append them to the "New_Ads" sheet.
+Send an email with a nice HTML table of all new ads (columns: Title, Price, Location, Size, Link, Phone, Type).
+
+Email subject: "Нові оголошення про оренду квартир на imoti.bg — {today}"
+Use SMTP (Gmail recommended with App Password).
+
+Technical requirements:
+Use requests + BeautifulSoup4 (site is mostly server-rendered).
+Respectful scraping: random delay 2–5 seconds between requests, realistic User-Agent.
+Handle pagination automatically (find "next" link or loop until no more pages).
+All configuration via .env file (GOOGLE_SHEET_ID, SERVICE_ACCOUNT_JSON path, EMAIL_FROM, EMAIL_TO, SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, etc.).
+Error handling and logging to console + optional file.
+Include requirements.txt.
+Include README.md with:
+How to set up Google Service Account and share the sheet.
+How to get Gmail App Password.
+How to run daily with cron (example for Linux/Ubuntu).
+Optional: how to run with APScheduler in background.
+
+
+Additional nice-to-have (but must be optional):
+Command-line arguments: --force to re-check everything, --dry-run.
+Logging with colors (rich or loguru).
+Ability to filter by city (optional parameter in .env).
+
+
+Output format:
+
+Give me the full project structure.
+All files as separate code blocks with filenames (scraper.py, config.py, .env.example, requirements.txt, README.md).
+Make the code clean, with type hints, functions, and detailed comments in English.
+The main script must be runnable with python scraper.py.
+
+Write the complete solution now.
