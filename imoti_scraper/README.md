@@ -24,9 +24,9 @@ imoti_scraper/
 
 - Scrapes **all pages** of `https://imoti.bg/наеми/` (up to ~26 pages).
 - Filters for **apartment** listings only (`апартамент`, `едностаен`, `двустаен`, etc.).
-- Visits each **detail page** to extract the contact phone number.
-- Classifies each listing as **"приватний"** (private person) or **"від агенції"** (agency) by cross-referencing a user-maintained agency phone list in Google Sheets.
-- Stores results in **three Google Sheets tabs**: `New_Ads`, `Agencies`, `Processed_IDs`.
+- Visits each **detail page** to extract the contact phone number and seller name.
+- **Three-tier agency classification** (see section below).
+- Stores results in **four Google Sheets tabs**: `New_Ads`, `Agencies`, `Processed_IDs`, `Renters`.
 - Sends a **styled HTML email** with a table of all new listings.
 - Polite scraping: **random 2–5 s delay** between requests.
 - Full **logging** with coloured Rich output + optional file.
@@ -180,21 +180,118 @@ python scraper.py --force --dry-run
 
 ## Google Sheets Layout
 
-The bot automatically creates three worksheet tabs on first run:
+The bot automatically creates **four** worksheet tabs on first run:
 
 ### `New_Ads`
+
+Auto-populated by the scraper. **Do not edit manually** — rows are appended.
+
 | Date | Ad_ID | Title | Price | Location | Size | Link | Phone | Type |
 |---|---|---|---|---|---|---|---|---|
 | 2025-06-01 | 513894 | Двустаен апартамент | 700 EUR\месец | София, Бункера | 60 кв.м. | https://… | 0894860795 | приватний |
 
+---
+
 ### `Agencies`
-Manually maintained list of agency phone numbers.  
-Add one phone per row (digits only, e.g. `0894860795`).  
-Any listing whose phone appears here will be classified as **"від агенції"**.
+
+**Manually maintained** list of known real-estate agencies.  
+The scraper reads this sheet to build its agency phone lookup set.
+
+| Agency_Name | Phones | Email |
+|---|---|---|
+| Хоби Имоти ЕООД | 0894860795,070011777 | office@hoboimoti.bg |
+| Имоти България | 070011777 | office@imoti.bg |
+| Агенция XYZ | 0888123456 | |
+
+**Column details:**
+
+- **`Agency_Name`** — free-text name for your reference (any string).
+- **`Phones`** — **comma-separated** list of normalised phone numbers.
+  - Digits only, no spaces or dashes (e.g. `0894860795,070011777`).
+  - The scraper splits by comma, normalises each fragment, and loads all
+    into its lookup set.
+  - International format is also fine — `+359 88 486 0795` normalises to
+    `359884860795`. Use the same format the site shows in ads.
+  - If an agency uses 3 numbers, put all three in one row:  
+    `0888111222,0888333444,070011777`
+- **`Email`** — optional; not used by the scraper (informational only).
+
+> **Backwards compatibility:** If a row has only one column with a phone number
+> (old single-column layout), the scraper falls back to reading column A.
+
+---
 
 ### `Processed_IDs`
-Auto-maintained list of Ad IDs already seen.  
-The bot skips any ad whose ID is in this list (unless `--force` is used).
+
+Auto-maintained by the scraper. One column: `Ad_ID`.
+
+Every Ad ID is appended here after processing.  On subsequent runs, any ID
+already in this sheet is skipped (unless `--force` is used).
+
+**Do not delete rows** unless you intentionally want an ad re-processed.
+
+---
+
+### `Renters`
+
+**Manually maintained** registry of potential tenants you are tracking.  
+The scraper **creates this sheet** on first run but **never reads from or writes to it**.
+
+| Name | Phone | Email | City | Apartment_Type | Max_Price |
+|---|---|---|---|---|---|
+| Іван Петров | 0898765432 | ivan@example.com | София | 1-room,2-room | 700 EUR |
+| Maria Schmidt | 0877123456 | | Пловдив | 2-room | 500 EUR |
+
+**Column meanings:**
+- `Name` — full name of the renter.
+- `Phone` — normalised phone(s), comma-separated if multiple contacts.
+- `Email` — contact email.
+- `City` — desired city.
+- `Apartment_Type` — comma-separated desired types (e.g. `1-room,2-room`).
+- `Max_Price` — budget ceiling (e.g. `700 EUR`, `1500 BGN`).
+
+This sheet is for **your own reference only** — for example, to match new
+listings in `New_Ads` against what your renters are looking for.
+
+---
+
+## Agency Classification Logic
+
+The scraper uses **three-tier classification**, applied in priority order:
+
+```
+┌─────┬────────────────────────────────────────────────────────────────┐
+│ Tier│ Condition                              → Result                │
+├─────┼────────────────────────────────────────────────────────────────┤
+│  1  │ Ad phone is in the Agencies sheet      → "від агенції"         │
+│     │ (user-maintained multi-phone list)                             │
+│     │ Strongest signal — explicit user override.                     │
+├─────┼────────────────────────────────────────────────────────────────┤
+│  2  │ Detail page <h3> label is NOT          → "від агенції"         │
+│     │ "Частно лице" (an agency name is       (page shows the         │
+│     │ shown by the site itself)               agency directly)       │
+├─────┼────────────────────────────────────────────────────────────────┤
+│  3  │ Seller name contains a keyword         → "від агенції"         │
+│     │ (masking detection):                                           │
+│     │   агенция, агенція, agency, агенц,                             │
+│     │   имоти, realty, estate, еоод, оод, ад                        │
+│     │ Catches agencies that post under a                             │
+│     │ person's name but reveal their company                         │
+│     │ suffix in the seller field.                                    │
+├─────┼────────────────────────────────────────────────────────────────┤
+│  4  │ None of the above                      → "приватний"           │
+└─────┴────────────────────────────────────────────────────────────────┘
+```
+
+**When the phone is hidden (JavaScript-protected):**
+- Phone is stored as `""` in `New_Ads`.
+- Classification still proceeds via Tiers 2–4 using the seller name.
+- A `WARNING` log line is emitted so you can review these ads manually.
+
+**When you find an agency not caught automatically:**
+- Add its phone number(s) to the `Agencies` sheet — that is the most reliable fix.
+- Alternatively, open an issue or add its name keyword to `AGENCY_NAME_KEYWORDS`
+  in `scraper.py`.
 
 ---
 
@@ -203,7 +300,6 @@ The bot skips any ad whose ID is in this list (unless `--force` is used).
 Run once per day at 08:00:
 
 ```bash
-# Edit crontab
 crontab -e
 ```
 
@@ -222,14 +318,18 @@ tail -f /home/youruser/imoti_scraper/cron.log
 
 ## Optional: Background Scheduling with APScheduler
 
-If you prefer to keep the script running as a daemon instead of using cron, uncomment `apscheduler` in `requirements.txt` and add this to the bottom of `scraper.py`:
+If you prefer to keep the script running as a daemon instead of using cron,
+uncomment `apscheduler` in `requirements.txt` and replace the `__main__` block
+at the bottom of `scraper.py`:
 
 ```python
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 if __name__ == "__main__":
+    import sys
+    # Run once immediately on startup, then daily at 08:00 Sofia time.
+    main()
     scheduler = BlockingScheduler(timezone="Europe/Sofia")
-    # Run every day at 08:00 Sofia time
     scheduler.add_job(main, "cron", hour=8, minute=0)
     print("Scheduler started. Press Ctrl+C to exit.")
     try:
@@ -240,10 +340,8 @@ if __name__ == "__main__":
 
 Then run:
 ```bash
-python scraper.py    # runs indefinitely
+python scraper.py    # runs indefinitely, fires daily at 08:00
 ```
-
-Or as a systemd service — see the next section.
 
 ---
 
@@ -273,7 +371,7 @@ Enable and start:
 sudo systemctl daemon-reload
 sudo systemctl enable imoti-scraper
 sudo systemctl start imoti-scraper
-sudo journalctl -u imoti-scraper -f   # follow logs
+sudo journalctl -u imoti-scraper -f
 ```
 
 ---
@@ -285,9 +383,12 @@ sudo journalctl -u imoti-scraper -f   # follow logs
 | `SERVICE_ACCOUNT_JSON not found` | Check the path in `.env`. Use an absolute path. |
 | `SpreadsheetNotFound` | Make sure you shared the sheet with the service account email. |
 | `SMTP authentication failed` | Use a Gmail App Password, not your account password. |
-| `503 / 429 from imoti.bg` | Increase `REQUEST_DELAY_MIN` and `REQUEST_DELAY_MAX` in `.env`. |
-| Phone not found on detail page | The site may be rendering the phone via JavaScript. Open the page in a browser and check — some agencies hide the number behind a click. The scraper will store an empty phone in that case. |
-| City filter not working | Make sure `CITY_FILTER` matches the Bulgarian city name exactly as it appears in the `Location` column (e.g. `София`, not `Sofia`). |
+| `503 / 429 from imoti.bg` | Increase `REQUEST_DELAY_MIN` / `REQUEST_DELAY_MAX` in `.env`. |
+| Phone not found on detail page | The number may be JS-protected. A WARNING is logged; classification still works via seller name. |
+| Agency classified as "приватний" | Add the agency's phone(s) to the `Agencies` sheet. Or check if its name contains a recognised keyword. |
+| City filter not working | `CITY_FILTER` must be a Bulgarian substring matching the `Location` column (e.g. `София`, not `Sofia`). |
+| Want to re-process old ads | Run `python scraper.py --force`. |
+| Want to test without side effects | Run `python scraper.py --dry-run`. |
 
 ---
 
@@ -295,7 +396,7 @@ sudo journalctl -u imoti-scraper -f   # follow logs
 
 - **Never commit `.env`** to version control. Add it to `.gitignore`.
 - Store the service-account JSON **outside** the project directory if possible.
-- The Gmail App Password grants access to **send email only** — it cannot access your inbox.
+- The Gmail App Password grants access to **send email only**.
 
 ---
 

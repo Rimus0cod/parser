@@ -105,6 +105,7 @@ class Config:
     ws_new_ads: str = "New_Ads"
     ws_agencies: str = "Agencies"
     ws_processed: str = "Processed_IDs"
+    ws_renters: str = "Renters"
 
     # ── Column headers ─────────────────────────────────────────────────────
     new_ads_headers: list[str] = field(
@@ -120,6 +121,50 @@ class Config:
             "Type",
         ]
     )
+
+    agencies_headers: list[str] = field(
+        default_factory=lambda: [
+            "Agency_Name",
+            "Phones",   # comma-separated list of normalised phone numbers
+            "Email",
+        ]
+    )
+    """
+    Agencies worksheet column headers.
+
+    Column layout:
+        Agency_Name  — human-readable name of the agency (e.g. "Агенция XYZ")
+        Phones       — comma-separated normalised phones (e.g. "0894860795,070011777")
+        Email        — optional contact email (e.g. "info@agency.com")
+
+    Users fill this sheet manually.  The scraper reads all Phones values,
+    splits by comma, normalises each, and builds a lookup set.
+    """
+
+    renters_headers: list[str] = field(
+        default_factory=lambda: [
+            "Name",
+            "Phone",
+            "Email",
+            "City",
+            "Apartment_Type",
+            "Max_Price",
+        ]
+    )
+    """
+    Renters worksheet column headers.
+
+    This sheet is for manual user entry only — the scraper creates it on first
+    run but never reads from or writes to it during normal operation.
+
+    Column layout:
+        Name            — full name of the potential renter (e.g. "Іван Петров")
+        Phone           — normalised phone, single or comma-separated multiples
+        Email           — contact email (e.g. "ivan@example.com")
+        City            — desired city (e.g. "София")
+        Apartment_Type  — desired type(s), comma-separated (e.g. "1-room,2-room")
+        Max_Price       — maximum budget (e.g. "700 EUR")
+    """
 
 
 def load_config() -> Config:

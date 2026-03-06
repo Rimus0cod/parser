@@ -5,11 +5,22 @@ Uses gspread + google-auth (service-account credentials).
 
 Responsibilities
 ────────────────
-• Open (or create) the target spreadsheet and its three worksheets.
+• Open (or create) the target spreadsheet and its four worksheets.
 • Read the set of already-processed Ad IDs from "Processed_IDs".
-• Read the set of known-agency phone numbers from "Agencies".
+• Read the set of known-agency phone numbers from "Agencies"
+  (multi-column layout; the "Phones" column may contain comma-separated values).
 • Append new ad rows to "New_Ads".
 • Append new Ad IDs to "Processed_IDs".
+• Ensure the "Renters" worksheet exists (created on first run, never written
+  to by the script — it is for manual user entry only).
+
+Worksheet schemas
+─────────────────
+New_Ads      : Date | Ad_ID | Title | Price | Location | Size | Link | Phone | Type
+Agencies     : Agency_Name | Phones | Email
+               Phones column is comma-separated, e.g. "0894860795,070011777"
+Processed_IDs: Ad_ID
+Renters      : Name | Phone | Email | City | Apartment_Type | Max_Price
 """
 
 from __future__ import annotations
@@ -80,6 +91,7 @@ class SheetsClient:
     Usage
     ─────
     client = SheetsClient(config)
+    client.connect()
     processed_ids = client.load_processed_ids()
     agency_phones = client.load_agency_phones()
     client.append_new_ads(rows)
@@ -92,13 +104,14 @@ class SheetsClient:
         self._ws_new_ads: gspread.Worksheet | None = None
         self._ws_agencies: gspread.Worksheet | None = None
         self._ws_processed: gspread.Worksheet | None = None
+        self._ws_renters: gspread.Worksheet | None = None
 
     # ── Connection ──────────────────────────────────────────────────────────
 
     def connect(self) -> None:
         """
-        Authenticate with the Google API and open all three worksheets,
-        creating them if necessary.
+        Authenticate with the Google API and open all four worksheets,
+        creating them (with header rows) if they don't exist yet.
 
         Raises:
             FileNotFoundError: if the service-account JSON file does not exist.
@@ -120,23 +133,35 @@ class SheetsClient:
         logger.info("Opening spreadsheet ID '%s' …", self._cfg.google_sheet_id)
         self._spreadsheet = gc.open_by_key(self._cfg.google_sheet_id)
 
-        # Ensure all three worksheets exist.
+        # ── New_Ads ────────────────────────────────────────────────────────
         self._ws_new_ads = _ensure_worksheet(
             self._spreadsheet,
             self._cfg.ws_new_ads,
             header_row=self._cfg.new_ads_headers,
         )
+
+        # ── Agencies (multi-column: Agency_Name | Phones | Email) ──────────
         self._ws_agencies = _ensure_worksheet(
             self._spreadsheet,
             self._cfg.ws_agencies,
-            header_row=["Phone"],
+            header_row=self._cfg.agencies_headers,
         )
+
+        # ── Processed_IDs ──────────────────────────────────────────────────
         self._ws_processed = _ensure_worksheet(
             self._spreadsheet,
             self._cfg.ws_processed,
             header_row=["Ad_ID"],
         )
-        logger.info("Google Sheets connection established.")
+
+        # ── Renters (manual entry only — created but never written to) ─────
+        self._ws_renters = _ensure_worksheet(
+            self._spreadsheet,
+            self._cfg.ws_renters,
+            header_row=self._cfg.renters_headers,
+        )
+
+        logger.info("Google Sheets connection established (4 worksheets ready).")
 
     # ── Read helpers ────────────────────────────────────────────────────────
 
@@ -157,22 +182,52 @@ class SheetsClient:
 
     def load_agency_phones(self) -> set[str]:
         """
-        Return the set of normalised phone numbers stored in "Agencies".
+        Return the set of normalised phone numbers from the "Agencies" sheet.
 
-        Phones are normalised (digits only) so they can be compared reliably.
-        The first row is treated as a header and skipped.
+        Sheet layout (row 1 = header, skipped):
+            col 0: Agency_Name  — human-readable name
+            col 1: Phones       — comma-separated phones (e.g. "0894860795,070011777")
+            col 2: Email        — optional
+
+        Each phone value is split by comma, stripped, normalised (digits only),
+        and added to the returned set.  Empty cells and invalid values are
+        silently ignored.
+
+        Returns:
+            set[str]: All known agency phone numbers as digit-only strings.
         """
         self._require_connection()
         assert self._ws_agencies is not None
 
         all_values: list[list[str]] = self._ws_agencies.get_all_values()
         phones: set[str] = set()
-        for row in all_values[1:]:
-            if row and row[0].strip():
-                normalised = _normalise_phone(row[0])
+
+        for row in all_values[1:]:  # skip header
+            if not row:
+                continue
+
+            # Column index 1 is "Phones" (the multi-phone column).
+            # We also check column 0 in case someone puts a phone directly in
+            # the Agency_Name column (backwards-compatibility / user error).
+            phones_raw: str = row[1].strip() if len(row) > 1 else ""
+            if not phones_raw:
+                # Fallback: try col 0 (might be old single-column layout)
+                phones_raw = row[0].strip() if row[0].strip() else ""
+
+            if not phones_raw:
+                continue
+
+            # Split by comma to handle multiple phones per row.
+            for part in phones_raw.split(","):
+                normalised = _normalise_phone(part.strip())
                 if normalised:
                     phones.add(normalised)
-        logger.info("Loaded %d agency phone numbers from sheet.", len(phones))
+
+        logger.info(
+            "Loaded %d unique agency phone numbers from '%s' sheet.",
+            len(phones),
+            self._cfg.ws_agencies,
+        )
         return phones
 
     # ── Write helpers ───────────────────────────────────────────────────────
@@ -196,13 +251,19 @@ class SheetsClient:
         assert self._ws_new_ads is not None
 
         if self._cfg.dry_run:
-            logger.info("[DRY-RUN] Would append %d row(s) to '%s'.", len(rows), self._cfg.ws_new_ads)
+            logger.info(
+                "[DRY-RUN] Would append %d row(s) to '%s'.",
+                len(rows),
+                self._cfg.ws_new_ads,
+            )
             for row in rows:
                 logger.debug("  DRY-RUN row: %s", row)
             return
 
-        logger.info("Appending %d new ad row(s) to '%s' …", len(rows), self._cfg.ws_new_ads)
-        # Append one-by-one to respect API quotas and give better error context.
+        logger.info(
+            "Appending %d new ad row(s) to '%s' …", len(rows), self._cfg.ws_new_ads
+        )
+        # Append row-by-row to respect API quotas and give better error context.
         for row in rows:
             self._ws_new_ads.append_row(row, value_input_option="USER_ENTERED")
         logger.info("Done appending rows.")
@@ -246,9 +307,10 @@ def _normalise_phone(raw: str) -> str:
     Strip all non-digit characters and return the cleaned phone string.
 
     Examples:
-        "+359 89 486 0795"  →  "35989486­0795"  (international)
+        "+359 89 486 0795"  →  "359894860795"  (international)
         "0894-860-795"      →  "0894860795"
         "0894860795"        →  "0894860795"
+        "0894 860 795"      →  "0894860795"
     """
     return "".join(ch for ch in raw if ch.isdigit())
 

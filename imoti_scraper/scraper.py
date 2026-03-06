@@ -14,7 +14,10 @@ The script:
 2.  Filters for apartments ("апартамент" in title or URL slug).
 3.  Skips Ad IDs already in the "Processed_IDs" Google Sheet.
 4.  For each new ad, visits the detail page to extract the phone number and
-    determine whether it is a private person or agency listing.
+    the seller name/type, then classifies using three-tier logic:
+      a) Phone in Agencies sheet (user-maintained multi-phone list) → agency
+      b) Seller name contains agency keyword (агенция/агенция/agency) → agency
+      c) Otherwise → private
 5.  Appends new rows to "New_Ads" and records Ad IDs in "Processed_IDs".
 6.  Sends an HTML summary email if any new ads were found.
 
@@ -102,6 +105,22 @@ APARTMENT_KEYWORDS = (
     "многостаен",
 )
 
+# Keywords that indicate an agency poster even when listed as "Частно лице".
+# Checked case-insensitively against the seller name extracted from the detail
+# page.  This catches agencies that mask as private sellers.
+AGENCY_NAME_KEYWORDS = (
+    "агенция",   # Bulgarian (Cyrillic)
+    "агенція",   # Ukrainian spelling (occasionally seen)
+    "agency",    # English
+    "агенц",     # prefix match covers "агенция", "агенции", etc.
+    "имоти",     # many agency names include "Имоти …"
+    "realty",
+    "estate",
+    "еоод",      # Ltd. suffix very common on Bulgarian agency names
+    "оод",       # Partnership suffix
+    "ад",        # JSC suffix (Акционерно дружество)
+)
+
 
 @dataclass
 class Listing:
@@ -115,7 +134,8 @@ class Listing:
     link: str
     # Populated after visiting the detail page:
     phone: str = ""
-    ad_type: str = ""  # "приватний" | "від агенції"
+    ad_type: str = ""         # "приватний" | "від агенції"
+    seller_name: str = ""     # e.g. "Частно лице" or "Агенция XYZ ЕООД"
     extra: dict = field(default_factory=dict)
 
     def as_row(self, today: str) -> list[str]:
@@ -361,15 +381,17 @@ def _parse_card(
 # Detail-page parser
 # ---------------------------------------------------------------------------
 
-def parse_detail_page(html: str) -> tuple[str, bool]:
+def parse_detail_page(html: str) -> tuple[str, bool, str]:
     """
-    Parse the detail page of a listing to extract the phone number and
-    determine whether the poster is a private person or an agency.
+    Parse the detail page of a listing to extract the phone number, the raw
+    seller name, and an initial agency flag based on page content alone.
 
     The relevant HTML section looks like:
 
         <div class="block-info">
-          <h3>Частно лице</h3>      ← or the agency name
+          <h3>Частно лице</h3>      ← "private person" label
+          <!-- OR: -->
+          <h3>Агенция XYZ ЕООД</h3> ← agency name
           <ul class="block-person-list">
             <li>
               <div class="block-person-link">
@@ -379,42 +401,60 @@ def parse_detail_page(html: str) -> tuple[str, bool]:
           </ul>
         </div>
 
+    Note: The caller (enrich_listing) applies the full three-tier classification
+    which also cross-references the Agencies sheet and checks for agency
+    keywords in the seller name — that is NOT done here.
+
     Args:
         html: Raw HTML of the detail page.
 
     Returns:
-        Tuple (normalised_phone, is_agency):
-            normalised_phone — digits-only phone string, or "" if not found.
-            is_agency        — True if the listing is from an agency.
+        Tuple (normalised_phone, is_agency_from_page, seller_name):
+            normalised_phone    — digits-only phone string, or "" if not found.
+            is_agency_from_page — True when the page's <h3> is NOT "Частно лице"
+                                  (i.e., an agency name is shown directly).
+            seller_name         — raw text of the <h3> label (e.g. "Частно лице"
+                                  or "Агенция XYZ ЕООД"). Empty string if absent.
     """
     soup = BeautifulSoup(html, "html.parser")
 
     block_info = soup.select_one("div.block-info")
     if not block_info:
-        return "", False
+        logger.debug("parse_detail_page: no .block-info element found.")
+        return "", False, ""
 
-    # ── Determine poster type ─────────────────────────────────────────────
+    # ── Extract seller name from <h3> ─────────────────────────────────────
     h3 = block_info.select_one("h3")
-    poster_text = h3.get_text(strip=True).lower() if h3 else ""
-    # "Частно лице" → private; anything else is assumed to be an agency name.
-    is_private = "частно лице" in poster_text
-    is_agency = not is_private
+    seller_name: str = h3.get_text(strip=True) if h3 else ""
+    poster_lower = seller_name.lower()
+
+    # "Частно лице" (literally "private person") → not an agency by page label.
+    # Any other text is treated as a named seller (typically an agency).
+    is_agency_from_page: bool = "частно лице" not in poster_lower
 
     # ── Extract phone number ──────────────────────────────────────────────
     phone = ""
-    # Primary source: <a href="tel:…">
+
+    # Primary source: <a href="tel:…"> anywhere inside .block-info
     tel_link = block_info.select_one('a[href^="tel:"]')
     if tel_link:
-        raw_phone = tel_link.get("href", "").replace("tel:", "")
+        raw_phone = tel_link.get("href", "").replace("tel:", "").strip()
         phone = normalise_phone(raw_phone)
 
-    # Fallback: text inside .block-person-link
+    # Fallback: visible text inside .block-person-link (covers obfuscated links)
     if not phone:
         person_link = block_info.select_one(".block-person-link")
         if person_link:
             phone = normalise_phone(person_link.get_text(strip=True))
 
-    return phone, is_agency
+    if not phone:
+        logger.warning(
+            "parse_detail_page: phone number not found in .block-info. "
+            "Seller: '%s'. The number may be hidden behind a JavaScript reveal.",
+            seller_name,
+        )
+
+    return phone, is_agency_from_page, seller_name
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +550,26 @@ def scrape_all_pages(
     return all_listings
 
 
+def _seller_name_suggests_agency(seller_name: str) -> bool:
+    """
+    Return True if *seller_name* contains any keyword that strongly suggests
+    the poster is an agency rather than a private individual.
+
+    This is the "masking" detection layer: some agencies post under a person's
+    name but include their company suffix (ЕООД, ООД, АД) or the word "Агенция"
+    in the seller field shown on the detail page.
+
+    Args:
+        seller_name: Raw text from the detail page's <h3> label, e.g.
+                     "Агенция XYZ ЕООД" or "Хоби Имоти ЕООД".
+
+    Returns:
+        True if any AGENCY_NAME_KEYWORDS substring is found (case-insensitive).
+    """
+    lower = seller_name.lower()
+    return any(kw in lower for kw in AGENCY_NAME_KEYWORDS)
+
+
 def enrich_listing(
     listing: Listing,
     session: requests.Session,
@@ -517,7 +577,25 @@ def enrich_listing(
     agency_phones: set[str],
 ) -> None:
     """
-    Visit the detail page for *listing* and fill in phone + type fields in-place.
+    Visit the detail page for *listing* and fill in phone, seller_name, and
+    ad_type fields in-place using three-tier classification logic.
+
+    Classification priority (highest to lowest):
+    ┌─────┬────────────────────────────────────────────────────────────────┐
+    │  1  │ Phone is in the Agencies sheet (user-maintained list)          │
+    │     │ → "від агенції"  (strongest signal — explicit user override)   │
+    ├─────┼────────────────────────────────────────────────────────────────┤
+    │  2  │ Page <h3> is NOT "Частно лице" (agency name shown directly)    │
+    │     │ → "від агенції"                                                │
+    ├─────┼────────────────────────────────────────────────────────────────┤
+    │  3  │ Seller name contains an agency keyword (агенция, еоод, etc.)   │
+    │     │ → "від агенції"  (masking detection)                           │
+    ├─────┼────────────────────────────────────────────────────────────────┤
+    │  4  │ None of the above → "приватний"                                │
+    └─────┴────────────────────────────────────────────────────────────────┘
+
+    When the phone is not found (hidden/JS-protected), classification still
+    proceeds via tiers 2–4 using only the seller name.
 
     Args:
         listing:       The Listing to enrich (modified in-place).
@@ -530,26 +608,46 @@ def enrich_listing(
     if resp is None:
         logger.warning("Could not fetch detail page for ad %s.", listing.ad_id)
         listing.phone = ""
+        listing.seller_name = ""
         listing.ad_type = "невідомо"
         return
 
-    phone, is_agency_from_page = parse_detail_page(resp.text)
+    phone, is_agency_from_page, seller_name = parse_detail_page(resp.text)
     listing.phone = phone
+    listing.seller_name = seller_name
 
-    # Classification logic:
-    # 1. If the detail page explicitly says "Частно лице" → private, unless the
-    #    phone is in the Agencies sheet (user-maintained override).
-    # 2. If the page shows an agency name → agency.
+    # ── Tier 1: phone is in the user-managed Agencies sheet ──────────────
     if phone and phone in agency_phones:
         listing.ad_type = "від агенції"
+        logger.debug(
+            "  Ad %s → AGENCY (phone %s matched Agencies sheet)", listing.ad_id, phone
+        )
+
+    # ── Tier 2: page explicitly shows an agency name (not "Частно лице") ─
     elif is_agency_from_page:
         listing.ad_type = "від агенції"
+        logger.debug(
+            "  Ad %s → AGENCY (page seller label: '%s')", listing.ad_id, seller_name
+        )
+
+    # ── Tier 3: seller name contains agency-masking keywords ─────────────
+    elif _seller_name_suggests_agency(seller_name):
+        listing.ad_type = "від агенції"
+        logger.debug(
+            "  Ad %s → AGENCY (keyword match in seller name: '%s')",
+            listing.ad_id,
+            seller_name,
+        )
+
+    # ── Tier 4: none of the above → private person ───────────────────────
     else:
         listing.ad_type = "приватний"
-
-    logger.debug(
-        "  Ad %s → phone=%s, type=%s", listing.ad_id, listing.phone, listing.ad_type
-    )
+        logger.debug(
+            "  Ad %s → PRIVATE (seller: '%s', phone: %s)",
+            listing.ad_id,
+            seller_name,
+            phone or "<not found>",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -557,9 +655,9 @@ def enrich_listing(
 # ---------------------------------------------------------------------------
 
 def _print_summary(listings: list[Listing], today: str) -> None:
-    """Render a Rich table of new listings to stdout."""
+    """Render a Rich coloured table of new listings to stdout."""
     table = Table(
-        title=f"Нові оголошення — {today}",
+        title=f"Нові оголошення — {today}  ({len(listings)} total)",
         show_lines=True,
         style="bold",
     )
@@ -569,11 +667,16 @@ def _print_summary(listings: list[Listing], today: str) -> None:
     table.add_column("Ціна", style="green")
     table.add_column("Місто", style="yellow")
     table.add_column("Площа", style="blue")
+    table.add_column("Продавець", style="white")
     table.add_column("Телефон", style="magenta")
     table.add_column("Тип", style="red")
 
     for idx, lst in enumerate(listings, start=1):
-        type_style = "[green]приватний[/green]" if "приватний" in lst.ad_type else "[orange1]від агенції[/orange1]"
+        type_style = (
+            "[green]приватний[/green]"
+            if "приватний" in lst.ad_type
+            else "[orange1]від агенції[/orange1]"
+        )
         table.add_row(
             str(idx),
             lst.ad_id,
@@ -581,7 +684,8 @@ def _print_summary(listings: list[Listing], today: str) -> None:
             lst.price,
             lst.location,
             lst.size,
-            lst.phone,
+            lst.seller_name or "—",
+            lst.phone or "—",
             type_style,
         )
 
