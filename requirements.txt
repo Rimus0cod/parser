@@ -8,20 +8,23 @@
 # =============================================================================
 
 # ── HTTP & HTML parsing ───────────────────────────────────────────────────────
-requests>=2.31.0            # HTTP client
-beautifulsoup4>=4.12.0      # HTML parser
+requests>=2.31.0            # HTTP client with retries and session support
+beautifulsoup4>=4.12.0      # HTML parser (screen-scraping DOM traversal)
 lxml>=5.1.0                 # Fast HTML/XML parser backend for BeautifulSoup
 
+# ── Data processing ───────────────────────────────────────────────────────────
+pandas>=2.0.0              # DataFrame and CSV export
+
 # ── Google Sheets ─────────────────────────────────────────────────────────────
-gspread>=6.0.0              # Google Sheets API client
+gspread>=6.0.0              # Google Sheets API client (read/write worksheets)
 google-auth>=2.28.0         # Google OAuth2 / service-account authentication
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0        # Load .env files into os.environ
 
-# ── Rich terminal output (coloured logging + tables) ─────────────────────────
-rich>=13.7.0
+# ── Rich terminal output (coloured logging + summary tables) ──────────────────
+rich>=13.7.0                # Beautiful terminal output with colour and tables
 
-# ── Optional: APScheduler for background scheduling ──────────────────────────
-# Uncomment if you prefer in-process scheduling over cron.
+# ── Optional: APScheduler for in-process background scheduling ────────────────
+# Uncomment if you prefer running as a long-lived daemon instead of cron.
 # apscheduler>=3.10.0

@@ -3,6 +3,9 @@ email_sender.py — HTML email notification for the imoti.bg rental scraper.
 
 Builds a nicely formatted HTML table of new apartment listings and sends it
 via SMTP (Gmail with App Password by default).
+
+Email columns (matching Config.new_ads_headers):
+    #, Title, Price, Location, Size, Phone, Seller_Name, Type, Link
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ _HTML_HEAD = """\
       padding: 20px;
     }}
     .container {{
-      max-width: 960px;
+      max-width: 1040px;
       margin: 0 auto;
       background: #fff;
       border-radius: 8px;
@@ -96,6 +99,15 @@ _HTML_HEAD = """\
       font-size: 11px;
       white-space: nowrap;
     }}
+    .badge-unknown {{
+      display: inline-block;
+      background: #95a5a6;
+      color: #fff;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      white-space: nowrap;
+    }}
     a {{
       color: #2c6fad;
       text-decoration: none;
@@ -114,7 +126,10 @@ _HTML_HEAD = """\
 <body>
   <div class="container">
     <h1>Нові оголошення про оренду квартир на imoti.bg</h1>
-    <p class="subtitle">Дата: <strong>{today}</strong> &nbsp;|&nbsp; Знайдено: <strong>{count}</strong> нових оголошень</p>
+    <p class="subtitle">
+      Дата: <strong>{today}</strong> &nbsp;|&nbsp;
+      Знайдено: <strong>{count}</strong> нових оголошень
+    </p>
     <table>
       <thead>
         <tr>
@@ -124,6 +139,7 @@ _HTML_HEAD = """\
           <th>Місто</th>
           <th>Площа</th>
           <th>Телефон</th>
+          <th>Продавець</th>
           <th>Тип</th>
           <th>Посилання</th>
         </tr>
@@ -131,6 +147,7 @@ _HTML_HEAD = """\
       <tbody>
 """
 
+# One row template.  Uses str.format() — all user content MUST be HTML-escaped.
 _HTML_ROW = """\
         <tr>
           <td>{idx}</td>
@@ -139,6 +156,7 @@ _HTML_ROW = """\
           <td>{location}</td>
           <td>{size}</td>
           <td>{phone}</td>
+          <td>{seller_name}</td>
           <td>{badge}</td>
           <td><a href="{link}" target="_blank">Переглянути</a></td>
         </tr>
@@ -158,9 +176,12 @@ _HTML_FOOT = """\
 
 def _make_badge(ad_type: str) -> str:
     """Return an HTML badge element for the given listing type."""
-    if "агенці" in ad_type.lower():
-        return f'<span class="badge-agency">від агенції</span>'
-    return f'<span class="badge-private">приватний</span>'
+    ad_type_lower = ad_type.lower()
+    if "агенці" in ad_type_lower:
+        return '<span class="badge-agency">від агенції</span>'
+    if "приватний" in ad_type_lower:
+        return '<span class="badge-private">приватний</span>'
+    return '<span class="badge-unknown">невідомо</span>'
 
 
 def build_html_body(ads: list[dict[str, Any]], today: str) -> str:
@@ -168,8 +189,10 @@ def build_html_body(ads: list[dict[str, Any]], today: str) -> str:
     Construct the full HTML email body from a list of ad dicts.
 
     Args:
-        ads:   List of ad dicts, each having keys that match Config.new_ads_headers.
-               (Date, Ad_ID, Title, Price, Location, Size, Link, Phone, Type)
+        ads:   List of ad dicts.  Expected keys (all optional — empty string
+               used if missing):
+                   Date, Ad_ID, Title, Price, Location, Size, Link,
+                   Phone, Seller_Name, Type
         today: Date string for the email subtitle (YYYY-MM-DD).
 
     Returns:
@@ -184,12 +207,13 @@ def build_html_body(ads: list[dict[str, Any]], today: str) -> str:
             location=_escape(str(ad.get("Location", ""))),
             size=_escape(str(ad.get("Size", ""))),
             phone=_escape(str(ad.get("Phone", ""))),
+            seller_name=_escape(str(ad.get("Seller_Name", ""))),
             badge=_make_badge(str(ad.get("Type", ""))),
-            link=ad.get("Link", "#"),
+            link=_escape_attr(str(ad.get("Link", "#"))),
         )
 
     html = (
-        _HTML_HEAD.format(today=today, count=len(ads))
+        _HTML_HEAD.format(today=_escape(today), count=len(ads))
         + rows_html
         + _HTML_FOOT
     )
@@ -216,7 +240,8 @@ def build_plain_text(ads: list[dict[str, Any]], today: str) -> str:
     for idx, ad in enumerate(ads, start=1):
         lines.append(f"{idx}. {ad.get('Title', '')} — {ad.get('Price', '')}")
         lines.append(f"   Місто: {ad.get('Location', '')} | Площа: {ad.get('Size', '')}")
-        lines.append(f"   Телефон: {ad.get('Phone', '')} | Тип: {ad.get('Type', '')}")
+        lines.append(f"   Телефон: {ad.get('Phone', '')} | Продавець: {ad.get('Seller_Name', '')}")
+        lines.append(f"   Тип: {ad.get('Type', '')}")
         lines.append(f"   Посилання: {ad.get('Link', '')}")
         lines.append("")
     return "\n".join(lines)
@@ -256,7 +281,10 @@ def send_email(
         return
 
     if config.dry_run:
-        logger.info("[DRY-RUN] Would send email to %s with %d ad(s).", config.email_to, len(ads))
+        logger.info(
+            "[DRY-RUN] Would send email to %s with %d ad(s).",
+            config.email_to, len(ads),
+        )
         return
 
     if today is None:
@@ -270,8 +298,8 @@ def send_email(
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = config.email_from or config.smtp_user
-    msg["To"] = config.email_to
+    msg["From"]    = config.email_from or config.smtp_user
+    msg["To"]      = config.email_to
 
     # Set plain text as the primary content, then attach HTML as an alternative.
     msg.set_content(text_body)
@@ -308,14 +336,23 @@ def send_email(
 
 
 # ---------------------------------------------------------------------------
-# Internal helper
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 def _escape(text: str) -> str:
-    """Minimal HTML escaping to prevent XSS in the email body."""
+    """Minimal HTML escaping to prevent XSS / broken markup in the email body."""
     return (
         text.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace('"', "&quot;")
     )
+
+
+def _escape_attr(url: str) -> str:
+    """
+    Escape a URL for safe use as an HTML attribute value.
+    Only double-quotes are escaped here; ampersands in query strings are kept
+    as-is because they are valid in href attributes.
+    """
+    return url.replace('"', "%22")
