@@ -1,27 +1,3 @@
-"""
-sheets.py — Google Sheets integration for the imoti.bg rental scraper.
-
-Uses gspread + google-auth (service-account credentials).
-
-Responsibilities
-────────────────
-• Open (or create) the target spreadsheet and its four worksheets.
-• Read the set of already-processed Ad IDs from "Processed_IDs".
-• Read agency data (phone sets + name sets) from "Agencies".
-• Append new ad rows to "New_Ads".
-• Append new Ad IDs to "Processed_IDs".
-• Upsert agency rows (merge phones, update email) in "Agencies".
-• Create the "Renters" sheet if missing (manual-only — script never writes to it).
-
-Agencies sheet layout (multi-column, enhanced):
-    Agency_Name  |  Phones                 | City  | Email            | Contact_Name
-    Агенция XYZ  |  0894860795,070011777   | София | info@agency.com  | Иван Петров
-    ...
-
-Phones are stored as a comma-separated list (normalised, digits only).
-When updating, new phones are merged (unique union). City/Email/Contact_Name
-are filled only when the existing value is empty/sentinel.
-"""
 
 from __future__ import annotations
 
@@ -50,23 +26,6 @@ _SCOPES: list[str] = [
 # ---------------------------------------------------------------------------
 
 def normalise_phone(raw: str) -> str:
-    """
-    Normalise a Bulgarian phone number to a consistent format.
-    
-    Handles:
-    - +359 format (international)
-    - 00 359 format
-    - 0 prefix (Bulgarian)
-    - Spaces, dashes, parentheses removal
-    
-    Examples:
-        "+359 89 486 0795"  → "0894860795"
-        "00359894860795"   → "0894860795"
-        "0894-860-795"     → "0894860795"
-        "0888492790"       → "0888492790"
-        "359896380248"     → "0896380248"
-    """
-    # First, extract only digits
     digits = "".join(ch for ch in raw if ch.isdigit())
     
     if not digits:
@@ -90,33 +49,11 @@ def normalise_phone(raw: str) -> str:
     
     return digits
 
-
-# Make importable as `from sheets import normalise_phone`
-# (used in scraper.py).
-
-
-# ---------------------------------------------------------------------------
-# Helper: ensure a worksheet exists, create it if not
-# ---------------------------------------------------------------------------
-
 def _ensure_worksheet(
     spreadsheet: gspread.Spreadsheet,
     title: str,
     header_row: list[str] | None = None,
 ) -> gspread.Worksheet:
-    """
-    Return the worksheet with *title*, creating it (and writing headers) if it
-    doesn't exist yet.
-
-    Args:
-        spreadsheet:  An open gspread.Spreadsheet object.
-        title:        Worksheet tab name.
-        header_row:   If provided and the sheet is newly created, this row is
-                      written as the first row.
-
-    Returns:
-        The gspread.Worksheet object.
-    """
     try:
         ws = spreadsheet.worksheet(title)
         logger.debug("Opened existing worksheet '%s'.", title)
@@ -146,22 +83,6 @@ def _column_label(idx: int) -> str:
 # ---------------------------------------------------------------------------
 
 class SheetsClient:
-    """
-    Wrapper around a gspread connection that exposes only the operations the
-    scraper needs.
-
-    Usage
-    ─────
-    client = SheetsClient(config)
-    client.connect()
-    processed_ids  = client.load_processed_ids()
-    agency_phones  = client.load_agency_phones()
-    agency_names   = client.load_agency_names()
-    client.append_new_ads(rows)
-    client.mark_processed(ad_ids)
-    client.upsert_agencies(agency_rows)
-    """
-
     def __init__(self, config: Config) -> None:
         self._cfg = config
         self._spreadsheet: gspread.Spreadsheet | None = None
@@ -173,23 +94,6 @@ class SheetsClient:
     # ── Connection ──────────────────────────────────────────────────────────
 
     def connect(self) -> None:
-        """
-        Authenticate with the Google API and open all four worksheets,
-        creating them if necessary.
-
-        Worksheet layout created on first run:
-            New_Ads       — Date, Ad_ID, Title, Price, Location, Size, Link,
-                            Phone, Seller_Name, Type, Contact_Name, Contact_Email
-            Agencies      — Agency_Name, Phones, Email
-            Processed_IDs — Ad_ID
-            Renters       — Name, Phone, Email, City, Apartment_Type, Max_Price
-                            (manual-only — script never writes here)
-
-        Raises:
-            FileNotFoundError: if the service-account JSON file does not exist.
-            gspread.exceptions.SpreadsheetNotFound: if the sheet ID is wrong
-                or the service account hasn't been granted access.
-        """
         json_path: Path = self._cfg.service_account_json
         if not json_path.exists():
             raise FileNotFoundError(
@@ -231,12 +135,6 @@ class SheetsClient:
         logger.info("Google Sheets connection established.")
 
     def _ensure_new_ads_columns(self) -> None:
-        """
-        Ensure New_Ads contains Contact_Name and Contact_Email header columns.
-
-        This performs an in-place header migration for older sheets that still
-        have the legacy 10-column header.
-        """
         assert self._ws_new_ads is not None
 
         header = [h.strip() for h in self._ws_new_ads.row_values(1)]
@@ -281,17 +179,6 @@ class SheetsClient:
         return ids
 
     def load_agency_phones(self) -> set[str]:
-        """
-        Return the set of normalised phone numbers stored in "Agencies".
-
-        The Agencies sheet now uses multi-column layout:
-            Agency_Name | Phones (comma-separated) | City | Email | Contact_Name
-
-        Each cell in the "Phones" column may contain multiple phones separated
-        by commas.  All are normalised (digits only) and returned as a flat set.
-
-        The first row is treated as a header and skipped.
-        """
         self._require_connection()
         assert self._ws_agencies is not None
 
@@ -314,14 +201,6 @@ class SheetsClient:
         return phones
 
     def load_agency_names(self) -> set[str]:
-        """
-        Return the set of agency names (lowercased) from the "Agencies" sheet.
-
-        Used for substring-matching against Seller_Name to detect agencies
-        that list themselves as private individuals.
-
-        The first row is treated as a header and skipped.
-        """
         self._require_connection()
         assert self._ws_agencies is not None
 
@@ -336,18 +215,6 @@ class SheetsClient:
         return names
 
     def load_agency_contact_map(self) -> dict[str, dict[str, str]]:
-        """
-        Return a map of lowercased agency name to contact fields.
-
-        Output shape:
-            {
-                "agency name": {
-                    "contact_name": "... or -",
-                    "contact_email": "... or -",
-                },
-                ...
-            }
-        """
         agencies = self.load_agencies_full()
         out: dict[str, dict[str, str]] = {}
         for row in agencies:
@@ -364,13 +231,6 @@ class SheetsClient:
         return out
 
     def load_new_ads_for_backfill(self) -> list[dict[str, Any]]:
-        """
-        Read New_Ads rows and return records suitable for contact backfill.
-
-        Returns one dict per data row (header excluded) with keys:
-            row_number, ad_id, link, seller_name, ad_type, phone,
-            contact_name, contact_email
-        """
         self._require_connection()
         assert self._ws_new_ads is not None
 
@@ -420,17 +280,6 @@ class SheetsClient:
         return rows
 
     def load_agencies_full(self) -> list[dict[str, str]]:
-        """
-        Return all rows from the Agencies sheet as a list of dicts.
-
-        Each dict has keys:
-            'Agency_Name', 'Phones', 'City', 'Email', 'Contact_Name'.
-        Used internally when upserting new agency data.
-
-        Rows with fewer than 5 columns are padded with empty strings so that
-        existing sheets that pre-date the Contact_Name column are handled
-        gracefully.
-        """
         self._require_connection()
         assert self._ws_agencies is not None
 
@@ -469,17 +318,6 @@ class SheetsClient:
     # ── Write helpers ───────────────────────────────────────────────────────
 
     def append_new_ads(self, rows: list[list[Any]]) -> None:
-        """
-        Append *rows* to the "New_Ads" worksheet.
-
-        Each element in *rows* must have values in the same column order as
-        Config.new_ads_headers:
-            [Date, Ad_ID, Title, Price, Location, Size, Link, Phone, Seller_Name,
-             Type, Contact_Name, Contact_Email]
-
-        Args:
-            rows: List of row-lists to append.
-        """
         if not rows:
             logger.debug("append_new_ads called with empty list — nothing to do.")
             return

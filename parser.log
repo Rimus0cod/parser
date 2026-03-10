@@ -457,3 +457,180 @@
 2026-03-08 11:55:09,038 INFO     imoti_scraper — Total apartment listings collected: 192
 2026-03-08 11:55:09,039 INFO     imoti_scraper — 192 total apartments scraped; 0 are new (not yet processed).
 2026-03-08 11:55:09,039 INFO     imoti_scraper — No new listings today — nothing to do.
+2026-03-09 17:52:48,984 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-09 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-09 17:52:48,987 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-09 17:52:49,027 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-09 17:52:53,383 INFO     sheets — Google Sheets connection established.
+2026-03-09 17:52:53,528 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-09 17:52:54,253 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-09 17:52:54,953 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-09 17:52:55,664 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-09 17:52:56,378 INFO     sheets — Loaded 192 processed Ad IDs from sheet.
+2026-03-09 17:52:56,379 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-09 17:53:01,813 INFO     imoti_scraper —   Page 1: 11 apartment listing(s) found (11 after dedup).
+2026-03-09 17:53:01,872 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-09 17:53:06,752 INFO     imoti_scraper —   Page 2: 7 apartment listing(s) found (7 after dedup).
+2026-03-09 17:53:06,803 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-09 17:53:09,136 INFO     imoti_scraper —   Page 3: 7 apartment listing(s) found (7 after dedup).
+2026-03-09 17:53:09,204 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-09 17:53:13,229 INFO     imoti_scraper —   Page 4: 11 apartment listing(s) found (11 after dedup).
+2026-03-09 17:53:13,285 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-09 17:53:18,005 INFO     imoti_scraper —   Page 5: 10 apartment listing(s) found (10 after dedup).
+2026-03-09 17:53:18,054 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-09 17:53:21,984 INFO     imoti_scraper —   Page 6: 10 apartment listing(s) found (10 after dedup).
+2026-03-09 17:53:22,033 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-09 17:53:25,910 INFO     imoti_scraper —   Page 7: 8 apartment listing(s) found (8 after dedup).
+2026-03-09 17:53:25,960 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-09 17:53:29,977 INFO     imoti_scraper —   Page 8: 10 apartment listing(s) found (10 after dedup).
+2026-03-09 17:53:30,025 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-09 17:53:34,503 INFO     imoti_scraper —   Page 9: 10 apartment listing(s) found (10 after dedup).
+2026-03-09 17:53:34,561 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-09 17:53:37,055 INFO     imoti_scraper —   Page 10: 5 apartment listing(s) found (5 after dedup).
+2026-03-09 17:53:37,103 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-09 17:53:41,557 INFO     imoti_scraper —   Page 11: 6 apartment listing(s) found (6 after dedup).
+2026-03-09 17:53:41,607 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-09 17:53:45,667 INFO     imoti_scraper —   Page 12: 9 apartment listing(s) found (9 after dedup).
+2026-03-09 17:53:45,718 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-09 17:53:48,366 INFO     imoti_scraper —   Page 13: 6 apartment listing(s) found (6 after dedup).
+2026-03-09 17:53:48,409 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-09 17:53:53,115 INFO     imoti_scraper —   Page 14: 11 apartment listing(s) found (11 after dedup).
+2026-03-09 17:53:53,161 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-09 17:53:58,368 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-09 17:53:58,420 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-09 17:54:03,284 INFO     imoti_scraper —   Page 16: 7 apartment listing(s) found (7 after dedup).
+2026-03-09 17:54:03,329 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-09 17:54:06,986 INFO     imoti_scraper —   Page 17: 6 apartment listing(s) found (6 after dedup).
+2026-03-09 17:54:07,032 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-09 17:54:09,758 INFO     imoti_scraper —   Page 18: 8 apartment listing(s) found (8 after dedup).
+2026-03-09 17:54:09,805 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-09 17:54:14,703 WARNING  imoti_scraper — Request error for https://imoti.bg/наеми/page:19 (attempt 1/3): ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-03-09 17:54:20,283 INFO     imoti_scraper —   Page 19: 3 apartment listing(s) found (3 after dedup).
+2026-03-09 17:54:20,325 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-09 17:54:24,883 INFO     imoti_scraper —   Page 20: 6 apartment listing(s) found (6 after dedup).
+2026-03-09 17:54:24,928 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-09 17:54:28,681 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-09 17:54:28,726 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-09 17:54:33,609 INFO     imoti_scraper —   Page 22: 5 apartment listing(s) found (5 after dedup).
+2026-03-09 17:54:33,654 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-09 17:54:38,516 INFO     imoti_scraper —   Page 23: 4 apartment listing(s) found (4 after dedup).
+2026-03-09 17:54:38,559 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-09 17:54:42,787 INFO     imoti_scraper —   Page 24: 7 apartment listing(s) found (7 after dedup).
+2026-03-09 17:54:42,838 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-09 17:54:45,931 INFO     imoti_scraper —   Page 25: 11 apartment listing(s) found (11 after dedup).
+2026-03-09 17:54:45,987 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-09 17:54:48,937 INFO     imoti_scraper —   Page 26: 3 apartment listing(s) found (3 after dedup).
+2026-03-09 17:54:48,985 INFO     imoti_scraper — No 'next page' link on page 26 — stopping.
+2026-03-09 17:54:48,987 INFO     imoti_scraper — Total apartment listings collected: 193
+2026-03-09 17:54:48,988 INFO     imoti_scraper — 193 total apartments scraped; 8 are new (not yet processed).
+2026-03-09 17:54:48,989 INFO     imoti_scraper — Enriching 8 new listing(s) …
+2026-03-09 17:54:48,990 INFO     imoti_scraper —   [1/8] Ad 514438 — 'Двустаен апартамент'
+2026-03-09 17:54:54,215 INFO     imoti_scraper —   [2/8] Ad 514445 — 'Двустаен апартамент'
+2026-03-09 17:54:59,015 INFO     imoti_scraper —   [3/8] Ad 514443 — 'Двустаен апартамент'
+2026-03-09 17:55:04,821 INFO     imoti_scraper —   [4/8] Ad 514444 — 'Двустаен апартамент'
+2026-03-09 17:55:08,526 INFO     imoti_scraper —   [5/8] Ad 514446 — 'Двустаен апартамент'
+2026-03-09 17:55:12,742 INFO     imoti_scraper —   [6/8] Ad 514448 — 'Двустаен апартамент'
+2026-03-09 17:55:16,999 INFO     imoti_scraper —   [7/8] Ad 513853 — 'Тристаен апартамент'
+2026-03-09 17:55:20,216 INFO     imoti_scraper —   [8/8] Ad 512552 — 'Тристаен апартамент'
+2026-03-09 17:55:23,527 INFO     sheets — Appending 8 new ad row(s) to 'New_Ads' …
+2026-03-09 17:55:24,336 INFO     sheets — Done appending rows.
+2026-03-09 17:55:24,337 INFO     sheets — Marking 8 Ad ID(s) as processed …
+2026-03-09 17:55:25,158 INFO     email_sender — Building email for 8 ad(s) …
+2026-03-09 17:55:25,167 INFO     email_sender — Sending email via smtp.gmail.com:587 (user=macxi3333@gmail.com) → i.kurochka@gmail.com …
+2026-03-09 17:55:26,845 INFO     email_sender — Email sent successfully.
+2026-03-09 17:55:26,846 INFO     imoti_scraper — === Done: 8 new listing(s) processed on 2026-03-09 ===
+2026-03-10 11:40:49,914 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-10 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-10 11:40:49,918 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-10 11:40:49,956 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-10 11:40:53,334 INFO     sheets — Google Sheets connection established.
+2026-03-10 11:40:53,399 ERROR    imoti_scraper — Failed to connect to MySQL: 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306' (111)
+2026-03-10 11:52:16,736 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-10 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-10 11:52:16,741 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-10 11:52:16,777 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-10 11:52:20,090 INFO     sheets — Google Sheets connection established.
+2026-03-10 11:52:20,166 ERROR    imoti_scraper — Failed to connect to MySQL: 1698 (28000): Access denied for user 'parser'@'localhost'
+2026-03-10 11:53:37,035 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-10 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-10 11:53:37,039 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-10 11:53:37,075 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-10 11:53:40,526 INFO     sheets — Google Sheets connection established.
+2026-03-10 11:53:40,554 ERROR    imoti_scraper — Failed to connect to MySQL: 1049 (42000): Unknown database 'imoti'
+2026-03-10 11:54:11,258 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-10 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-10 11:54:11,261 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-10 11:54:11,297 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-10 11:54:14,271 INFO     sheets — Google Sheets connection established.
+2026-03-10 11:54:14,299 ERROR    imoti_scraper — Failed to connect to MySQL: 1049 (42000): Unknown database 'imoti'
+2026-03-10 11:55:35,505 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-10 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-10 11:55:35,508 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-10 11:55:35,544 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-10 11:55:37,617 INFO     sheets — Google Sheets connection established.
+2026-03-10 11:55:39,060 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-10 11:55:39,785 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-10 11:55:40,017 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-10 11:55:40,243 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-10 11:55:40,926 INFO     sheets — Loaded 200 processed Ad IDs from sheet.
+2026-03-10 11:55:40,927 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-10 11:55:46,607 INFO     imoti_scraper —   Page 1: 10 apartment listing(s) found (10 after dedup).
+2026-03-10 11:55:46,653 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-10 11:55:49,042 INFO     imoti_scraper —   Page 2: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:55:49,085 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-10 11:55:52,263 INFO     imoti_scraper —   Page 3: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:55:52,320 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-10 11:55:56,062 INFO     imoti_scraper —   Page 4: 9 apartment listing(s) found (9 after dedup).
+2026-03-10 11:55:56,107 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-10 11:56:00,505 INFO     imoti_scraper —   Page 5: 11 apartment listing(s) found (11 after dedup).
+2026-03-10 11:56:00,550 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-10 11:56:03,231 INFO     imoti_scraper —   Page 6: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:56:03,274 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-10 11:56:06,149 INFO     imoti_scraper —   Page 7: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:56:06,196 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-10 11:56:09,144 INFO     imoti_scraper —   Page 8: 10 apartment listing(s) found (10 after dedup).
+2026-03-10 11:56:09,190 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-10 11:56:12,002 INFO     imoti_scraper —   Page 9: 10 apartment listing(s) found (10 after dedup).
+2026-03-10 11:56:12,048 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-10 11:56:15,400 INFO     imoti_scraper —   Page 10: 7 apartment listing(s) found (7 after dedup).
+2026-03-10 11:56:15,445 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-10 11:56:17,654 INFO     imoti_scraper —   Page 11: 6 apartment listing(s) found (6 after dedup).
+2026-03-10 11:56:17,696 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-10 11:56:20,784 INFO     imoti_scraper —   Page 12: 7 apartment listing(s) found (7 after dedup).
+2026-03-10 11:56:20,836 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-10 11:56:25,339 INFO     imoti_scraper —   Page 13: 9 apartment listing(s) found (9 after dedup).
+2026-03-10 11:56:25,502 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-10 11:56:29,920 INFO     imoti_scraper —   Page 14: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:56:29,959 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-10 11:56:33,586 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-10 11:56:33,635 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-10 11:56:37,343 INFO     imoti_scraper —   Page 16: 7 apartment listing(s) found (7 after dedup).
+2026-03-10 11:56:37,382 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-10 11:56:40,216 INFO     imoti_scraper —   Page 17: 9 apartment listing(s) found (9 after dedup).
+2026-03-10 11:56:40,267 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-10 11:56:43,396 INFO     imoti_scraper —   Page 18: 6 apartment listing(s) found (6 after dedup).
+2026-03-10 11:56:43,443 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-10 11:56:48,115 INFO     imoti_scraper —   Page 19: 4 apartment listing(s) found (4 after dedup).
+2026-03-10 11:56:48,156 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-10 11:56:52,680 INFO     imoti_scraper —   Page 20: 5 apartment listing(s) found (5 after dedup).
+2026-03-10 11:56:52,725 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-10 11:56:55,574 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-10 11:56:55,615 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-10 11:56:59,793 INFO     imoti_scraper —   Page 22: 7 apartment listing(s) found (7 after dedup).
+2026-03-10 11:56:59,838 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-10 11:57:04,255 INFO     imoti_scraper —   Page 23: 2 apartment listing(s) found (2 after dedup).
+2026-03-10 11:57:04,294 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-10 11:57:08,230 INFO     imoti_scraper —   Page 24: 7 apartment listing(s) found (7 after dedup).
+2026-03-10 11:57:08,278 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-10 11:57:12,506 INFO     imoti_scraper —   Page 25: 10 apartment listing(s) found (10 after dedup).
+2026-03-10 11:57:12,552 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-10 11:57:17,021 INFO     imoti_scraper —   Page 26: 6 apartment listing(s) found (6 after dedup).
+2026-03-10 11:57:17,069 INFO     imoti_scraper — No 'next page' link on page 26 — stopping.
+2026-03-10 11:57:17,070 INFO     imoti_scraper — Total apartment listings collected: 194
+2026-03-10 11:57:17,070 INFO     imoti_scraper — 194 total apartments scraped; 4 are new (not yet processed).
+2026-03-10 11:57:17,071 INFO     imoti_scraper — Enriching 4 new listing(s) …
+2026-03-10 11:57:17,072 INFO     imoti_scraper —   [1/4] Ad 514452 — 'Тристаен апартамент'
+2026-03-10 11:57:19,717 INFO     imoti_scraper —   [2/4] Ad 514456 — 'Многостаен'
+2026-03-10 11:57:24,679 INFO     imoti_scraper —   [3/4] Ad 514458 — 'Многостаен'
+2026-03-10 11:57:29,016 INFO     imoti_scraper —   [4/4] Ad 514459 — 'Многостаен'
+2026-03-10 11:57:32,899 INFO     sheets — Appending 4 new ad row(s) to 'New_Ads' …
+2026-03-10 11:57:33,378 INFO     sheets — Done appending rows.
+2026-03-10 11:57:33,379 INFO     sheets — Marking 4 Ad ID(s) as processed …
+2026-03-10 11:57:34,312 INFO     email_sender — Building email for 4 ad(s) …
+2026-03-10 11:57:34,477 INFO     email_sender — Sending email via smtp.gmail.com:587 (user=macxi3333@gmail.com) → i.kurochka@gmail.com …
+2026-03-10 11:57:35,936 INFO     email_sender — Email sent successfully.
+2026-03-10 11:57:35,936 INFO     imoti_scraper — === Done: 4 new listing(s) processed on 2026-03-10 ===

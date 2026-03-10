@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-Deprecated wrapper.
-
-Use `python scraper.py --backfill-contacts` instead.
-"""
-
 from __future__ import annotations
 
 import subprocess

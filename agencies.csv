@@ -20,7 +20,23 @@ Fenix Invest ANA Ltd,0887432873,
 GALA Real Estate,0885945400,
 Gancheva,0899213112,
 Gold Estate,0895494621,
-Imoti biala,0886478033,
+Imoti biala,0886478033,from agency_contacts import build_agency_url_map, get_contact_info, _make_session
+
+session = _make_session()
+
+# Один раз за запуск — строит/загружает из кэша
+agency_url_map = build_agency_url_map(session=session, use_cache=True)
+
+contact_cache = {}   # передавать один и тот же объект во все вызовы
+
+info = get_contact_info(
+    seller_name="Хоби Имоти ЕООД",
+    ad_type="від агенції",
+    agency_url_map=agency_url_map,
+    contact_cache=contact_cache,
+    session=session,
+)
+# {"contact_name": "Весела Ангелова", "email": "vesela@abv.bg"}
 İmoti Turkey,05323660829,
 Imotio Estates,0878860940,
 Just Balkan Property,0885167890,

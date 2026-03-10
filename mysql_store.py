@@ -1,12 +1,3 @@
-"""
-MySQL persistence layer for imoti scraper.
-
-Stores:
-- listings (New_Ads payload)
-- agencies
-- processed_ids
-"""
-
 from __future__ import annotations
 
 import logging

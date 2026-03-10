@@ -1,10 +1,3 @@
-"""
-config.py — Configuration loader for the imoti.bg rental scraper.
-
-Reads all settings from a .env file (or environment variables) using python-dotenv.
-All configuration is centralised here so that scraper.py stays clean.
-"""
-
 from __future__ import annotations
 
 import os
@@ -14,11 +7,6 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-
-# ---------------------------------------------------------------------------
-# Load .env from the same directory as this file (or a parent), then fall
-# back to real environment variables if any key is missing.
-# ---------------------------------------------------------------------------
 _ENV_FILE = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=_ENV_FILE, override=False)
 
@@ -207,36 +195,6 @@ class Config:
 
 
 def load_config() -> Config:
-    """
-    Build and return a Config object populated from environment variables.
-
-    Required variables (script will exit if missing):
-        GOOGLE_SHEET_ID        — the Google Spreadsheet ID
-        SERVICE_ACCOUNT_JSON   — path to the service-account credentials JSON
-
-    Optional variables (all have sensible defaults):
-        SHEET_NAME             — default: "Imoti_BG_Rentals"
-        EMAIL_FROM             — sender e-mail address
-        EMAIL_TO               — recipient e-mail address (comma-separated ok)
-        SMTP_SERVER            — default: smtp.gmail.com
-        SMTP_PORT              — default: 587
-        SMTP_USER              — SMTP login username
-        SMTP_PASSWORD          — SMTP login password / App Password
-        MAX_PAGES              — default: 30  (listing pages)
-        MAX_AGENCY_PAGES       — default: 15  (agency pages)
-        REQUEST_DELAY_MIN      — default: 2.0
-        REQUEST_DELAY_MAX      — default: 5.0
-        CITY_FILTER            — e.g. "София"  (blank = all cities)
-        LOG_FILE               — path to a log file (optional)
-        LOG_LEVEL              — default: INFO
-        AGENCIES_CSV_PATH      — path to export agencies CSV (optional)
-        MYSQL_ENABLED          — true/false (default: false)
-        MYSQL_HOST             — default: 127.0.0.1
-        MYSQL_PORT             — default: 3306
-        MYSQL_USER             — mysql username
-        MYSQL_PASSWORD         — mysql password
-        MYSQL_DATABASE         — default: imoti
-    """
     cfg = Config(
         google_sheet_id=_require("GOOGLE_SHEET_ID"),
         service_account_json=Path(_require("SERVICE_ACCOUNT_JSON")),
