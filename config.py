@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+
 _ENV_FILE = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=_ENV_FILE, override=False)
 
@@ -37,6 +38,7 @@ def _optional_bool(key: str, default: bool = False) -> bool:
 # Dataclass that holds every setting used by the scraper.
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Config:
     # ── Google Sheets ──────────────────────────────────────────────────────
@@ -50,9 +52,9 @@ class Config:
     mysql_enabled: bool = False
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
-    mysql_user: str = ""
+    mysql_user: str = "root"
     mysql_password: str = ""
-    mysql_database: str = "imoti"
+    mysql_database: str = ""
 
     sheet_name: str = "Imoti_BG_Rentals"
     """Name of the Google Spreadsheet (must match the actual file name)."""
@@ -135,6 +137,10 @@ class Config:
     agencies_csv_path: Optional[Path] = None
     """Optional path to export agencies to CSV file (e.g., 'agencies.csv')."""
 
+    # ── Telegram ────────────────────────────────────────────────────────────
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     # ── Runtime flags (set by CLI args) ──────────────────────────────────
     force: bool = False
     """If True, re-process all ads even if they are already in Processed_IDs."""
@@ -157,16 +163,16 @@ class Config:
     # ── Column headers ─────────────────────────────────────────────────────
     new_ads_headers: list[str] = field(
         default_factory=lambda: [
-            "Date",        # YYYY-MM-DD (today's date)
-            "Ad_ID",       # Unique numeric ID from the URL
-            "Title",       # Listing title (e.g. "Двустаен апартамент")
-            "Price",       # Price with currency (e.g. "700 EUR/месец")
-            "Location",    # City / neighbourhood
-            "Size",        # Floor area in sq.m.
-            "Link",        # Full URL to detail page
-            "Phone",       # Normalised phone (digits only)
-            "Seller_Name", # e.g. "Частно лице" or "Агенция XYZ"
-            "Type",        # "приватний" | "від агенції"
+            "Date",  # YYYY-MM-DD (today's date)
+            "Ad_ID",  # Unique numeric ID from the URL
+            "Title",  # Listing title (e.g. "Двустаен апартамент")
+            "Price",  # Price with currency (e.g. "700 EUR/месец")
+            "Location",  # City / neighbourhood
+            "Size",  # Floor area in sq.m.
+            "Link",  # Full URL to detail page
+            "Phone",  # Normalised phone (digits only)
+            "Seller_Name",  # e.g. "Частно лице" or "Агенция XYZ"
+            "Type",  # "приватний" | "від агенції"
             "Contact_Name",
             "Contact_Email",
         ]
@@ -174,22 +180,22 @@ class Config:
 
     agencies_headers: list[str] = field(
         default_factory=lambda: [
-            "Agency_Name",   # Human-readable agency name
-            "Phones",        # Comma-separated list of normalised phone numbers
-            "City",          # City location
-            "Email",         # Optional contact email (from list page or profile page)
+            "Agency_Name",  # Human-readable agency name
+            "Phones",  # Comma-separated list of normalised phone numbers
+            "City",  # City location
+            "Email",  # Optional contact email (from list page or profile page)
             "Contact_Name",  # Contact person name scraped from the agency profile page
         ]
     )
 
     renters_headers: list[str] = field(
         default_factory=lambda: [
-            "Name",           # Renter's full name
-            "Phone",          # Renter's contact phone
-            "Email",          # Renter's email
-            "City",           # Desired city
-            "Apartment_Type", # e.g. "двустаен", "тристаен"
-            "Max_Price",      # Maximum monthly rent
+            "Name",  # Renter's full name
+            "Phone",  # Renter's contact phone
+            "Email",  # Renter's email
+            "City",  # Desired city
+            "Apartment_Type",  # e.g. "двустаен", "тристаен"
+            "Max_Price",  # Maximum monthly rent
         ]
     )
 
@@ -212,7 +218,11 @@ def load_config() -> Config:
         city_filter=_optional("CITY_FILTER") or None,
         log_file=Path(_optional("LOG_FILE")) if _optional("LOG_FILE") else None,
         log_level=_optional("LOG_LEVEL", "INFO").upper(),
-        agencies_csv_path=Path(_optional("AGENCIES_CSV_PATH")) if _optional("AGENCIES_CSV_PATH") else None,
+        agencies_csv_path=Path(_optional("AGENCIES_CSV_PATH"))
+        if _optional("AGENCIES_CSV_PATH")
+        else None,
+        telegram_bot_token=_optional("TELEGRAM_BOT_TOKEN"),
+        telegram_chat_id=_optional("TELEGRAM_CHAT_ID"),
         mysql_enabled=_optional_bool("MYSQL_ENABLED", False),
         mysql_host=_optional("MYSQL_HOST", "127.0.0.1"),
         mysql_port=int(_optional("MYSQL_PORT", "3306")),

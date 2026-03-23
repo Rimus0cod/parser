@@ -6,18 +6,20 @@ import random
 import re
 import sys
 import time
+import concurrent.futures
+import threading
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urljoin
 
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
-import pandas as pd
 
 from config import Config, load_config
 from email_sender import send_email
@@ -75,7 +77,6 @@ APARTMENT_KEYWORDS = (
 
 @dataclass
 class Listing:
-
     ad_id: str
     title: str
     price: str
@@ -84,13 +85,13 @@ class Listing:
     link: str
     # Populated during enrichment (detail page visit or list page extraction):
     phone: str = ""
-    seller_name: str = ""     # e.g. "Частно лице" or "Агенция XYZ"
-    ad_type: str = ""         # "приватний" | "від агенції"
+    seller_name: str = ""  # e.g. "Частно лице" or "Агенция XYZ"
+    ad_type: str = ""  # "приватний" | "від агенції"
     contact_name: str = "-"
     contact_email: str = "-"
 
     def as_row(self, today: str) -> list[str]:
-       
+
         return [
             today,
             self.ad_id,
@@ -109,16 +110,16 @@ class Listing:
     def as_dict(self) -> dict[str, str]:
         """Return a dict keyed by Config.new_ads_headers for the email template."""
         return {
-            "Date":        "",
-            "Ad_ID":       self.ad_id,
-            "Title":       self.title,
-            "Price":       self.price,
-            "Location":    self.location,
-            "Size":        self.size,
-            "Link":        self.link,
-            "Phone":       self.phone,
+            "Date": "",
+            "Ad_ID": self.ad_id,
+            "Title": self.title,
+            "Price": self.price,
+            "Location": self.location,
+            "Size": self.size,
+            "Link": self.link,
+            "Phone": self.phone,
             "Seller_Name": self.seller_name,
-            "Type":        self.ad_type,
+            "Type": self.ad_type,
             "Contact_Name": self.contact_name or "-",
             "Contact_Email": self.contact_email or "-",
         }
@@ -126,27 +127,25 @@ class Listing:
 
 @dataclass
 class AgencyRecord:
-
-
     agency_name: str
-    phones: list[str]        
-    city: str = ""          
-    email: str = ""          
-    contact_name: str = ""   
-    detail_url: str = ""     
+    phones: list[str]
+    city: str = ""
+    email: str = ""
+    contact_name: str = ""
+    detail_url: str = ""
+
     def to_dict(self) -> dict[str, str]:
         return {
-            "Agency_Name":  self.agency_name,
-            "Phones":       ",".join(self.phones),
-            "City":         self.city,
-            "Email":        self.email,
+            "Agency_Name": self.agency_name,
+            "Phones": ",".join(self.phones),
+            "City": self.city,
+            "Email": self.email,
             "Contact_Name": self.contact_name,
         }
 
 
 @dataclass
 class DetailPageInfo:
-
     phone: str = ""
     seller_name: str = ""
     contact_name: str = "-"
@@ -158,8 +157,9 @@ class DetailPageInfo:
 # HTTP session factory — with User-Agent rotation
 # ---------------------------------------------------------------------------
 
+
 def _make_session(config: Config) -> requests.Session:
-    
+
     ua = random.choice(config.user_agents)
     logger.debug("Using User-Agent: %s", ua)
 
@@ -173,7 +173,7 @@ def _make_session(config: Config) -> requests.Session:
             ),
             "Accept-Language": "bg-BG,bg;q=0.9,en-US;q=0.8,en;q=0.7",
             "Accept-Encoding": "gzip, deflate, br",
-            "Connection":      "keep-alive",
+            "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
             # Referrer to mimic a real browser navigation.
             "Referer": "https://imoti.bg/",
@@ -189,7 +189,7 @@ def _polite_get(
     retries: int = 3,
     backoff: float = 5.0,
 ) -> Optional[requests.Response]:
-   
+
     delay = random.uniform(config.request_delay_min, config.request_delay_max)
     logger.debug("Sleeping %.1f s before fetching %s", delay, url)
     time.sleep(delay)
@@ -237,19 +237,19 @@ CONTACT_SENTINEL = "-"
 
 
 def _extract_ad_id(url: str) -> str:
-   
+
     match = _AD_ID_RE.search(url)
     return match.group(1) if match else ""
 
 
 def _is_apartment(title: str, url: str) -> bool:
-    
+
     combined = (title + " " + url).lower()
     return any(kw in combined for kw in APARTMENT_KEYWORDS)
 
 
 def _extract_phone_from_text(text: str) -> str:
-    
+
     match = _PHONE_TEXT_RE.search(text)
     if match:
         raw = match.group(0)
@@ -262,7 +262,7 @@ def parse_listing_page(
     base_url: str,
     city_filter: Optional[str] = None,
 ) -> list[Listing]:
-    
+
     soup = BeautifulSoup(html, "html.parser")
     listings: list[Listing] = []
 
@@ -300,7 +300,7 @@ def _parse_card(
     article: BeautifulSoup,
     base_url: str,
 ) -> Optional[Listing]:
-    
+
     # ── Link & Ad ID ─────────────────────────────────────────────────────
     title_anchor = article.select_one("h4.product-classic-title a")
     if not title_anchor:
@@ -318,8 +318,9 @@ def _parse_card(
     # ── Price ─────────────────────────────────────────────────────────────
     price_el = article.select_one(".product-classic-price")
     if price_el:
-        
-        price_lines = [ln.strip() for ln in price_el.get_text("\n").splitlines() if ln.strip()]
+        price_lines = [
+            ln.strip() for ln in price_el.get_text("\n").splitlines() if ln.strip()
+        ]
         price = price_lines[0] if price_lines else ""
     else:
         price = ""
@@ -337,11 +338,11 @@ def _parse_card(
             break
 
     # ── Phone (opportunistic from card) ───────────────────────────────────
-    
+
     phone = _extract_phone_from_card(article)
 
     # ── Seller Name (opportunistic from card) ─────────────────────────────
-    
+
     seller_name = _extract_seller_name_from_card(article)
 
     return Listing(
@@ -357,7 +358,7 @@ def _parse_card(
 
 
 def _extract_phone_from_card(article: BeautifulSoup) -> str:
-    
+
     # 1. href="tel:..." anchor
     tel_link = article.select_one('a[href^="tel:"]')
     if tel_link:
@@ -377,7 +378,7 @@ def _extract_phone_from_card(article: BeautifulSoup) -> str:
         el = article.select_one(selector)
         if el:
             phone = normalise_phone(el.get_text(strip=True))
-            if len(phone) >= 9:   # sanity check: real Bulgarian numbers are 9-12 digits
+            if len(phone) >= 9:  # sanity check: real Bulgarian numbers are 9-12 digits
                 return phone
 
     # 3. Text scan for "Тел" prefix in the full card text
@@ -391,7 +392,7 @@ def _extract_phone_from_card(article: BeautifulSoup) -> str:
 
 
 def _extract_seller_name_from_card(article: BeautifulSoup) -> str:
-    
+
     # Try several common CSS patterns for the seller block on listing cards.
     for selector in (
         ".product-classic-agency",
@@ -399,7 +400,7 @@ def _extract_seller_name_from_card(article: BeautifulSoup) -> str:
         ".seller-name",
         "[class*='agency']",
         "[class*='seller']",
-        ".block-info h3",   # may appear in card previews
+        ".block-info h3",  # may appear in card previews
     ):
         el = article.select_one(selector)
         if el:
@@ -414,8 +415,9 @@ def _extract_seller_name_from_card(article: BeautifulSoup) -> str:
 # Detail-page parser
 # ---------------------------------------------------------------------------
 
+
 def parse_detail_page(html: str) -> DetailPageInfo:
-   
+
     soup = BeautifulSoup(html, "html.parser")
     info = DetailPageInfo()
 
@@ -439,13 +441,17 @@ def parse_detail_page(html: str) -> DetailPageInfo:
         block_agent = soup.select_one("div.block-agent")
         if block_agent:
             if not info.seller_name:
-                name_el = block_agent.select_one("h3, .block-agent-name, [class*='name']")
+                name_el = block_agent.select_one(
+                    "h3, .block-agent-name, [class*='name']"
+                )
                 if name_el:
                     info.seller_name = name_el.get_text(strip=True)
             if not info.phone:
                 tel_link = block_agent.select_one('a[href^="tel:"]')
                 if tel_link:
-                    info.phone = normalise_phone(tel_link.get("href", "").replace("tel:", ""))
+                    info.phone = normalise_phone(
+                        tel_link.get("href", "").replace("tel:", "")
+                    )
 
     if not info.phone:
         any_tel = soup.select_one('a[href^="tel:"]')
@@ -453,7 +459,9 @@ def parse_detail_page(html: str) -> DetailPageInfo:
             info.phone = normalise_phone(any_tel.get("href", "").replace("tel:", ""))
 
     if not info.seller_name:
-        for el in soup.select(".published-by, .posted-by, [class*='author'], [class*='contact']"):
+        for el in soup.select(
+            ".published-by, .posted-by, [class*='author'], [class*='contact']"
+        ):
             text = el.get_text(strip=True)
             if text:
                 info.seller_name = text
@@ -552,7 +560,9 @@ def _extract_agency_profile_url_from_detail_soup(soup: BeautifulSoup) -> str:
             href = a_tag.get("href", "").strip()
             if not href or not _AGU_HREF_RE.search(href):
                 continue
-            return href if href.startswith("http") else urljoin("https://imoti.bg/", href)
+            return (
+                href if href.startswith("http") else urljoin("https://imoti.bg/", href)
+            )
     return ""
 
 
@@ -577,14 +587,15 @@ def _looks_like_person_name(text: str) -> bool:
 # Pagination helper
 # ---------------------------------------------------------------------------
 
+
 def _has_next_page(soup: BeautifulSoup) -> bool:
-   
+
     # First, check for common pagination patterns in text
     for a in soup.select("ul.pagination a, .pagination a, a.next, li.next a"):
         text = a.get_text(strip=True).lower()
         if "»" in a.get_text() or text in ("следваща", "next", ">"):
             return True
-    
+
     # Also check for any link with page:N pattern (more reliable)
     for a in soup.select("a[href*='/page:']"):
         href = a.get("href", "")
@@ -595,7 +606,7 @@ def _has_next_page(soup: BeautifulSoup) -> bool:
             text = a.get_text(strip=True)
             if ">" in text or "»" in text or text == ">":
                 return True
-    
+
     return False
 
 
@@ -603,11 +614,12 @@ def _has_next_page(soup: BeautifulSoup) -> bool:
 # Core scraping logic — listing pages
 # ---------------------------------------------------------------------------
 
+
 def scrape_all_pages(
     session: requests.Session,
     config: Config,
 ) -> list[Listing]:
-    
+
     all_listings: list[Listing] = []
     seen_ids: set[str] = set()  # dedup within a single scrape run
 
@@ -643,7 +655,9 @@ def scrape_all_pages(
 
         # If the page returned zero results, we've gone past the last page.
         if not page_listings:
-            logger.info("No listings on page %d — reached the end of results.", page_num)
+            logger.info(
+                "No listings on page %d — reached the end of results.", page_num
+            )
             break
 
         # Check for a "next page" link as a secondary stop condition.
@@ -715,7 +729,9 @@ class ContactResolver:
         if seller_name_lower in self._agency_cache:
             return self._agency_cache[seller_name_lower]
 
-        key = _resolve_agency_contact_key(seller_name_lower, self._agency_contacts_source)
+        key = _resolve_agency_contact_key(
+            seller_name_lower, self._agency_contacts_source
+        )
         if not key:
             info = {"contact_name": CONTACT_SENTINEL, "contact_email": CONTACT_SENTINEL}
             self._agency_cache[seller_name_lower] = info
@@ -752,7 +768,7 @@ def enrich_listing(
     agency_names: set[str],
     contact_resolver: ContactResolver,
 ) -> None:
-    
+
     detail_info: Optional[DetailPageInfo] = None
 
     def ensure_detail() -> DetailPageInfo:
@@ -804,11 +820,21 @@ def enrich_listing(
             if email == CONTACT_SENTINEL and detail.contact_email != CONTACT_SENTINEL:
                 email = detail.contact_email
 
-            if (name == CONTACT_SENTINEL or email == CONTACT_SENTINEL) and detail.agency_profile_url:
-                profile_contact = contact_resolver.resolve_from_agency_profile(detail.agency_profile_url)
-                if name == CONTACT_SENTINEL and profile_contact["contact_name"] != CONTACT_SENTINEL:
+            if (
+                name == CONTACT_SENTINEL or email == CONTACT_SENTINEL
+            ) and detail.agency_profile_url:
+                profile_contact = contact_resolver.resolve_from_agency_profile(
+                    detail.agency_profile_url
+                )
+                if (
+                    name == CONTACT_SENTINEL
+                    and profile_contact["contact_name"] != CONTACT_SENTINEL
+                ):
                     name = profile_contact["contact_name"]
-                if email == CONTACT_SENTINEL and profile_contact["contact_email"] != CONTACT_SENTINEL:
+                if (
+                    email == CONTACT_SENTINEL
+                    and profile_contact["contact_email"] != CONTACT_SENTINEL
+                ):
                     email = profile_contact["contact_email"]
 
         listing.contact_name = name or CONTACT_SENTINEL
@@ -831,7 +857,7 @@ def _classify_listing(
     agency_phones: set[str],
     agency_names: set[str],
 ) -> str:
-    
+
     # 1. Phone in agency phone set.
     if phone and phone in agency_phones:
         return "від агенції"
@@ -850,13 +876,14 @@ def _classify_listing(
 # Agency scraping — for --update-agencies
 # ---------------------------------------------------------------------------
 
+
 def scrape_agencies(
     session: requests.Session,
     config: Config,
 ) -> list[AgencyRecord]:
-    
+
     all_agencies: list[AgencyRecord] = []
-    seen_names: set[str] = set()   # dedup by lowercased name within this run
+    seen_names: set[str] = set()  # dedup by lowercased name within this run
 
     # ── Pass 1: collect from list pages ───────────────────────────────────
     for page_num in range(1, config.max_agency_pages + 1):
@@ -879,7 +906,9 @@ def scrape_agencies(
 
         logger.info(
             "  Agency page %d: %d record(s) (%d after dedup).",
-            page_num, len(page_agencies), len(new_on_page),
+            page_num,
+            len(page_agencies),
+            len(new_on_page),
         )
         all_agencies.extend(new_on_page)
 
@@ -906,7 +935,9 @@ def scrape_agencies(
         if not rec.detail_url:
             logger.debug(
                 "  [%d/%d] %s — no profile URL, skipping detail fetch.",
-                idx, len(all_agencies), rec.agency_name,
+                idx,
+                len(all_agencies),
+                rec.agency_name,
             )
             # Ensure sentinel values so the row is complete.
             if not rec.contact_name:
@@ -917,21 +948,24 @@ def scrape_agencies(
 
         logger.info(
             "  [%d/%d] Fetching profile: %s → %s",
-            idx, len(all_agencies), rec.agency_name, rec.detail_url,
+            idx,
+            len(all_agencies),
+            rec.agency_name,
+            rec.detail_url,
         )
         try:
             details = parse_agency_details(rec.detail_url, session, config)
-        except Exception as exc:   # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "  Could not fetch profile for '%s': %s",
-                rec.agency_name, exc,
+                rec.agency_name,
+                exc,
             )
             details = {"contact_name": "-", "email": "-"}
 
         # Apply fetched contact_name (always — list page doesn't have it).
         rec.contact_name = details["contact_name"]
 
-        
         detail_email = details["email"]
         if detail_email != "-" and (not rec.email or rec.email == "-"):
             rec.email = detail_email
@@ -940,7 +974,9 @@ def scrape_agencies(
 
         logger.debug(
             "  %s → contact=%r  email=%r",
-            rec.agency_name, rec.contact_name, rec.email,
+            rec.agency_name,
+            rec.contact_name,
+            rec.email,
         )
 
     logger.info("Total agencies fully enriched: %d", len(all_agencies))
@@ -948,7 +984,7 @@ def scrape_agencies(
 
 
 def _parse_agency_page(html: str) -> list[AgencyRecord]:
-    
+
     soup = BeautifulSoup(html, "html.parser")
     records: list[AgencyRecord] = []
 
@@ -958,23 +994,21 @@ def _parse_agency_page(html: str) -> list[AgencyRecord]:
     # Fallback to older structure if needed
     if not containers:
         containers = soup.select(
-            ".agency-item, "
-            ".agency-list-item, "
-            "article.agency, "
-            ".company-item"
+            ".agency-item, .agency-list-item, article.agency, .company-item"
         )
 
     if not containers:
         # Last fallback: look for any block that contains an agency name
         containers = [
-            el.parent for el in soup.select("h3.agency-name, a.agency-name, h2.agency-name")
+            el.parent
+            for el in soup.select("h3.agency-name, a.agency-name, h2.agency-name")
             if el.parent
         ]
 
     for container in containers:
         try:
             record = _parse_agency_container(container)
-        except Exception as exc:   # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.debug("Skipping malformed agency container: %s", exc)
             continue
         if record is not None:
@@ -985,15 +1019,34 @@ def _parse_agency_page(html: str) -> list[AgencyRecord]:
 
 # ── City parsing helper ─────────────────────────────────────────────────────
 BULGARIAN_CITIES = [
-    "София", "Пловдив", "Варна", "Бургас", "Русе", "Стара Загора",
-    "Плевен", "Добрич", "Сливен", "Шумен", "Перник", "Хасково",
-    "Казанлък", "Кюстендил", "Монтана", "Велико Търново", "Асеновград",
-    "Видин", "Враца", "Габрово", "Димитровград", "Ловеч", "Силистра"
+    "София",
+    "Пловдив",
+    "Варна",
+    "Бургас",
+    "Русе",
+    "Стара Загора",
+    "Плевен",
+    "Добрич",
+    "Сливен",
+    "Шумен",
+    "Перник",
+    "Хасково",
+    "Казанлък",
+    "Кюстендил",
+    "Монтана",
+    "Велико Търново",
+    "Асеновград",
+    "Видин",
+    "Враца",
+    "Габрово",
+    "Димитровград",
+    "Ловеч",
+    "Силистра",
 ]
 
 
 def _parse_agency_container(container: BeautifulSoup) -> Optional[AgencyRecord]:
-    
+
     # ── Agency name + detail URL ──────────────────────────────────────────
     agency_name = ""
     detail_url = ""
@@ -1030,7 +1083,13 @@ def _parse_agency_container(container: BeautifulSoup) -> Optional[AgencyRecord]:
     phones: list[str] = []
 
     # 1. Elements with phone-related class / selector
-    for phone_sel in ("span.phone", ".phone", ".phones", "[class*='phone']", "[class*='tel']"):
+    for phone_sel in (
+        "span.phone",
+        ".phone",
+        ".phones",
+        "[class*='phone']",
+        "[class*='tel']",
+    ):
         for phone_el in container.select(phone_sel):
             raw = phone_el.get_text(strip=True)
             normalised = normalise_phone(raw)
@@ -1085,12 +1144,13 @@ def _parse_agency_container(container: BeautifulSoup) -> Optional[AgencyRecord]:
 # Agency profile-page parser  (parse_agency_details)
 # ---------------------------------------------------------------------------
 
+
 def parse_agency_details(
     url: str,
     session: requests.Session,
     config: Config,
 ) -> dict[str, str]:
-    
+
     # ── Fetch with the shared polite delay ────────────────────────────────
     # Use a slightly longer minimum delay for detail pages to be extra polite.
     resp = _polite_get(
@@ -1119,12 +1179,12 @@ def parse_agency_details(
 
     return {
         "contact_name": contact_name or "-",
-        "email":        email or "-",
+        "email": email or "-",
     }
 
 
 def _extract_contact_name(soup: BeautifulSoup) -> str:
-    
+
     # ── Pattern 1: dedicated CSS selectors ───────────────────────────────
     for sel in (
         ".contact-name",
@@ -1145,7 +1205,7 @@ def _extract_contact_name(soup: BeautifulSoup) -> str:
                 return name
 
     # ── Pattern 2: labelled text ("Лице за контакти: Иван Петров") ────────
-    
+
     label_patterns = (
         "лице за контакти",
         "контактно лице",
@@ -1161,11 +1221,17 @@ def _extract_contact_name(soup: BeautifulSoup) -> str:
             # Try next sibling text node
             sibling = label_tag.next_sibling
             if sibling:
-                candidate = sibling.strip() if isinstance(sibling, str) else sibling.get_text(strip=True)
+                candidate = (
+                    sibling.strip()
+                    if isinstance(sibling, str)
+                    else sibling.get_text(strip=True)
+                )
                 if candidate and len(candidate) >= 2:
                     return candidate
             # Try parent element text (strip the label itself)
-            parent_text = label_tag.parent.get_text(strip=True) if label_tag.parent else ""
+            parent_text = (
+                label_tag.parent.get_text(strip=True) if label_tag.parent else ""
+            )
             label_text = label_tag.get_text(strip=True)
             candidate = parent_text.replace(label_text, "").strip(" :–-")
             if candidate and len(candidate) >= 2:
@@ -1193,7 +1259,7 @@ def _extract_contact_name(soup: BeautifulSoup) -> str:
 
 
 def _extract_email(soup: BeautifulSoup) -> str:
-    
+
     # ── Pattern 1: mailto link ────────────────────────────────────────────
     mailto = soup.select_one('a[href^="mailto:"]')
     if mailto:
@@ -1219,7 +1285,7 @@ def _extract_email(soup: BeautifulSoup) -> str:
                 return text
 
     # ── Pattern 3: regex scan over visible text ───────────────────────────
-    
+
     for content_sel in (
         "main",
         "#main",
@@ -1228,7 +1294,7 @@ def _extract_email(soup: BeautifulSoup) -> str:
         ".agency-profile",
         ".block-agent",
         "article",
-        "body",          # last resort
+        "body",  # last resort
     ):
         container = soup.select_one(content_sel)
         if container:
@@ -1244,6 +1310,7 @@ def _extract_email(soup: BeautifulSoup) -> str:
 # Pretty-print summary table (Rich)
 # ---------------------------------------------------------------------------
 
+
 def _print_summary(listings: list[Listing], today: str) -> None:
     """Render a Rich table of new listings to stdout."""
     table = Table(
@@ -1251,17 +1318,17 @@ def _print_summary(listings: list[Listing], today: str) -> None:
         show_lines=True,
         style="bold",
     )
-    table.add_column("#",          style="dim",     width=4)
-    table.add_column("ID",         style="cyan",    no_wrap=True)
-    table.add_column("Назва",      style="white")
-    table.add_column("Ціна",       style="green")
-    table.add_column("Місто",      style="yellow")
-    table.add_column("Площа",      style="blue")
-    table.add_column("Телефон",    style="magenta")
-    table.add_column("Продавець",  style="white")
-    table.add_column("Тип",        style="red")
-    table.add_column("Контакт",    style="yellow")
-    table.add_column("Email",      style="green")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Назва", style="white")
+    table.add_column("Ціна", style="green")
+    table.add_column("Місто", style="yellow")
+    table.add_column("Площа", style="blue")
+    table.add_column("Телефон", style="magenta")
+    table.add_column("Продавець", style="white")
+    table.add_column("Тип", style="red")
+    table.add_column("Контакт", style="yellow")
+    table.add_column("Email", style="green")
 
     for idx, lst in enumerate(listings, start=1):
         type_style = (
@@ -1293,11 +1360,11 @@ def _print_agencies_summary(agencies: list[AgencyRecord]) -> None:
         show_lines=True,
         style="bold",
     )
-    table.add_column("#",             style="dim",     width=4)
-    table.add_column("Agency Name",   style="cyan")
-    table.add_column("Phones",        style="magenta")
-    table.add_column("Email",         style="green")
-    table.add_column("Contact Name",  style="yellow")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Agency Name", style="cyan")
+    table.add_column("Phones", style="magenta")
+    table.add_column("Email", style="green")
+    table.add_column("Contact Name", style="yellow")
 
     for idx, rec in enumerate(agencies, start=1):
         table.add_row(
@@ -1315,7 +1382,7 @@ def export_agencies_to_csv(
     agencies: list[AgencyRecord],
     csv_path: str | Path,
 ) -> None:
-    
+
     if not agencies:
         logger.warning("No agencies to export to CSV.")
         return
@@ -1326,11 +1393,13 @@ def export_agencies_to_csv(
         # For each agency, create a row with the first phone (if any)
         # and the city
         phone = rec.phones[0] if rec.phones else ""
-        data.append({
-            "Agency Name": rec.agency_name,
-            "Phone Number": phone,
-            "City": rec.city,
-        })
+        data.append(
+            {
+                "Agency Name": rec.agency_name,
+                "Phone Number": phone,
+                "City": rec.city,
+            }
+        )
 
     # Create DataFrame with the specified columns
     df = pd.DataFrame(data, columns=["Agency Name", "Phone Number", "City"])
@@ -1362,7 +1431,9 @@ def backfill_new_ads_contacts(
     updates: list[dict[str, Any]] = []
 
     for idx, row in enumerate(rows, start=1):
-        if not _is_missing_contact(row["contact_name"]) and not _is_missing_contact(row["contact_email"]):
+        if not _is_missing_contact(row["contact_name"]) and not _is_missing_contact(
+            row["contact_email"]
+        ):
             continue
 
         link = row.get("link", "").strip()
@@ -1370,8 +1441,10 @@ def backfill_new_ads_contacts(
             updates.append(
                 {
                     "row_number": row["row_number"],
-                    "contact_name": row.get("contact_name", "").strip() or CONTACT_SENTINEL,
-                    "contact_email": row.get("contact_email", "").strip() or CONTACT_SENTINEL,
+                    "contact_name": row.get("contact_name", "").strip()
+                    or CONTACT_SENTINEL,
+                    "contact_email": row.get("contact_email", "").strip()
+                    or CONTACT_SENTINEL,
                 }
             )
             continue
@@ -1412,6 +1485,7 @@ def backfill_new_ads_contacts(
 # ---------------------------------------------------------------------------
 # CLI argument parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -1470,14 +1544,15 @@ Examples:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
-   
+
     args = _parse_args()
 
     # ── Load configuration ────────────────────────────────────────────────
     config = load_config()
-    config.force           = args.force
-    config.dry_run         = args.dry_run
+    config.force = args.force
+    config.dry_run = args.dry_run
     config.update_agencies = args.update_agencies
     config.backfill_contacts = args.backfill_contacts
 
@@ -1518,7 +1593,7 @@ def main() -> int:
 
     # ═════════════════════════════════════════════════════════════════════
     # PATH A: --update-agencies
-    
+
     # ═════════════════════════════════════════════════════════════════════
     if config.update_agencies:
         logger.info("--- Agency update mode ---")
@@ -1531,14 +1606,14 @@ def main() -> int:
         if agency_records:
             _print_agencies_summary(agency_records)
             agency_dicts = [rec.to_dict() for rec in agency_records]
-            
+
             # Export to CSV if path is configured
             if config.agencies_csv_path:
                 try:
                     export_agencies_to_csv(agency_records, config.agencies_csv_path)
                 except Exception as exc:  # noqa: BLE001
                     logger.error("Failed to export agencies to CSV: %s", exc)
-            
+
             try:
                 sheets.upsert_agencies(agency_dicts)
             except Exception as exc:  # noqa: BLE001
@@ -1546,15 +1621,24 @@ def main() -> int:
                 return 1
             if mysql_store is not None:
                 if config.dry_run:
-                    logger.info("[DRY-RUN] Would upsert %d agencies into MySQL.", len(agency_dicts))
+                    logger.info(
+                        "[DRY-RUN] Would upsert %d agencies into MySQL.",
+                        len(agency_dicts),
+                    )
                 else:
                     try:
                         mysql_store.upsert_agencies(agency_dicts)
                     except Exception as exc:  # noqa: BLE001
-                        logger.error("Failed to upsert agencies into MySQL: %s", exc, exc_info=True)
+                        logger.error(
+                            "Failed to upsert agencies into MySQL: %s",
+                            exc,
+                            exc_info=True,
+                        )
                         return 1
         else:
-            logger.warning("No agency records were scraped from the agencies directory.")
+            logger.warning(
+                "No agency records were scraped from the agencies directory."
+            )
 
         # If the user only wanted to update agencies (no rental scraping), stop here.
         # If they also want the normal scrape, fall through.
@@ -1567,7 +1651,7 @@ def main() -> int:
     # ── Load agency reference data ─────────────────────────────────────────
     try:
         agency_phones: set[str] = sheets.load_agency_phones()
-        agency_names:  set[str] = sheets.load_agency_names()
+        agency_names: set[str] = sheets.load_agency_names()
         agency_contact_map = sheets.load_agency_contact_map()
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to load data from Google Sheets: %s", exc)
@@ -1580,7 +1664,11 @@ def main() -> int:
             mysql_contacts = mysql_store.load_agency_contact_map()
             agency_contact_map.update(mysql_contacts)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to load agency reference data from MySQL: %s", exc, exc_info=True)
+            logger.error(
+                "Failed to load agency reference data from MySQL: %s",
+                exc,
+                exc_info=True,
+            )
             return 1
 
     contact_resolver = ContactResolver(
@@ -1607,7 +1695,9 @@ def main() -> int:
                 rows_for_sync = sheets.load_new_ads_for_backfill()
                 mysql_store.upsert_from_new_ads_sheet_rows(rows_for_sync)
             except Exception as exc:  # noqa: BLE001
-                logger.error("Failed to sync backfilled New_Ads to MySQL: %s", exc, exc_info=True)
+                logger.error(
+                    "Failed to sync backfilled New_Ads to MySQL: %s", exc, exc_info=True
+                )
                 return 1
         return 0
 
@@ -1621,7 +1711,9 @@ def main() -> int:
         try:
             processed_ids |= mysql_store.load_processed_ids()
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to load processed ids from MySQL: %s", exc, exc_info=True)
+            logger.error(
+                "Failed to load processed ids from MySQL: %s", exc, exc_info=True
+            )
             return 1
 
     if config.force:
@@ -1648,30 +1740,54 @@ def main() -> int:
         return 0
 
     # ── Enrich new listings ────────────────────────────────────────────────
+
+    logger.info("Enriching %d new listing(s) concurrently …", len(new_listings))
     
-    logger.info("Enriching %d new listing(s) …", len(new_listings))
-    for i, listing in enumerate(new_listings, start=1):
-        logger.info(
-            "  [%d/%d] Ad %s — '%s'",
-            i, len(new_listings), listing.ad_id, listing.title,
-        )
+    enrich_lock = threading.Lock()
+    
+    def _enrich_single(idx: int, lst: Listing) -> None:
+        with enrich_lock:
+            logger.info(
+                "  [%d/%d] Ad %s — '%s'",
+                idx,
+                len(new_listings),
+                lst.ad_id,
+                lst.title,
+            )
         try:
             enrich_listing(
-                listing=listing,
+                listing=lst,
                 agency_phones=agency_phones,
                 agency_names=agency_names,
                 contact_resolver=contact_resolver,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not enrich ad %s: %s", listing.ad_id, exc)
-            listing.ad_type = "невідомо"
+            with enrich_lock:
+                logger.warning("Could not enrich ad %s: %s", lst.ad_id, exc)
+            lst.ad_type = "невідомо"
+
+        # Send Telegram notification if it's a private lead
+        if "приватний" in lst.ad_type:
+            from telegram_notifier import send_telegram_lead
+            send_telegram_lead(config, lst)
+
+    # Use max_workers=5 to speed it up while avoiding aggressive rate-limiting
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_enrich_single, i, lst): lst 
+            for i, lst in enumerate(new_listings, start=1)
+        }
+        for future in concurrent.futures.as_completed(futures):
+            exc = future.exception()
+            if exc is not None:
+                logger.error("Enrichment thread failed: %s", exc)
 
     # ── Display summary table ─────────────────────────────────────────────
     _print_summary(new_listings, today)
 
     # ── Write to Google Sheets ────────────────────────────────────────────
     new_rows = [lst.as_row(today) for lst in new_listings]
-    new_ids  = [lst.ad_id for lst in new_listings]
+    new_ids = [lst.ad_id for lst in new_listings]
 
     if not config.dry_run:
         try:
@@ -1695,7 +1811,8 @@ def main() -> int:
     else:
         logger.info(
             "[DRY-RUN] Would write %d new ad row(s) and %d processed ID(s).",
-            len(new_rows), len(new_ids),
+            len(new_rows),
+            len(new_ids),
         )
         if mysql_store is not None:
             logger.info(
