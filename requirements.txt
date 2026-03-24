@@ -32,3 +32,6 @@ rich>=13.7.0                # Beautiful terminal output with colour and tables  
 # ── Optional: APScheduler for in-process background scheduling ────────────────
 # Uncomment if you prefer running as a long-lived daemon instead of cron.
 # apscheduler>=3.10.0
+
+# ── Telegram bot handlers ─────────────────────────────────────────────────────
+python-telegram-bot>=21.0

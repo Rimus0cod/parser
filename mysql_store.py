@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from config import Config
@@ -295,3 +296,43 @@ class MySQLStore:
                 }
             )
         self.upsert_listings(shaped)
+
+    def query_listings(
+        self,
+        *,
+        city: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        ad_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._ensure_conn()
+        cur = self._conn.cursor(dictionary=True)
+
+        clauses: list[str] = []
+        params: list[Any] = []
+        if city:
+            clauses.append("location LIKE %s")
+            params.append(f"%{city}%")
+        if start_date:
+            clauses.append("date_seen >= %s")
+            params.append(start_date.isoformat())
+        if end_date:
+            clauses.append("date_seen <= %s")
+            params.append(end_date.isoformat())
+        if ad_type:
+            clauses.append("ad_type = %s")
+            params.append(ad_type)
+
+        sql = "SELECT * FROM listings"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY date_seen DESC, updated_at DESC"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params.append(int(limit))
+
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall()
+        cur.close()
+        return rows

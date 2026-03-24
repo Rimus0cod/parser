@@ -347,7 +347,7 @@ def _page_private_leads():
         return
 
     # ── Filters ──────────────────────────────────────────────────────────
-    col_f1, col_f2, col_f3 = st.columns(3)
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         cities = sorted(private_df["location"].dropna().unique().tolist())
         city = st.selectbox("📍 Місто", ["Всі"] + cities)
@@ -356,8 +356,10 @@ def _page_private_leads():
     with col_f3:
         date_range = st.selectbox(
             "📅 Період",
-            ["Всі", "Сьогодні", "Останні 3 дні", "Останній тиждень"],
+            ["Всі", "Сьогодні", "Останні 3 дні", "Останні 7 днів", "Останні 14 днів", "Поточний тиждень", "Обрати тиждень"],
         )
+    with col_f4:
+        custom_days = st.number_input("📆 Днів (для ручного фільтра)", min_value=1, max_value=90, value=7, step=1)
 
     # Apply filters
     if city != "Всі":
@@ -371,8 +373,31 @@ def _page_private_leads():
         elif date_range == "Останні 3 дні":
             cutoff = today - timedelta(days=3)
             private_df = private_df[private_df["date_seen"] >= str(cutoff)]
-        elif date_range == "Останній тиждень":
+        elif date_range == "Останні 7 днів":
             cutoff = today - timedelta(days=7)
+            private_df = private_df[private_df["date_seen"] >= str(cutoff)]
+        elif date_range == "Останні 14 днів":
+            cutoff = today - timedelta(days=14)
+            private_df = private_df[private_df["date_seen"] >= str(cutoff)]
+        elif date_range == "Поточний тиждень":
+            week_start = today - timedelta(days=today.weekday())
+            week_end = week_start + timedelta(days=6)
+            private_df = private_df[
+                (private_df["date_seen"] >= str(week_start))
+                & (private_df["date_seen"] <= str(week_end))
+            ]
+        elif date_range == "Обрати тиждень":
+            week_offset = st.slider("Зсув тижня (0 = поточний, -1 = минулий)", min_value=-12, max_value=0, value=0)
+            week_start = (today - timedelta(days=today.weekday())) + timedelta(days=7 * week_offset)
+            week_end = week_start + timedelta(days=6)
+            private_df = private_df[
+                (private_df["date_seen"] >= str(week_start))
+                & (private_df["date_seen"] <= str(week_end))
+            ]
+    if date_range == "Всі" and custom_days:
+        use_days_filter = st.checkbox("Застосувати ручний фільтр за останні N днів", value=False)
+        if use_days_filter and "date_seen" in private_df.columns:
+            cutoff = date.today() - timedelta(days=int(custom_days))
             private_df = private_df[private_df["date_seen"] >= str(cutoff)]
 
     st.metric("Знайдено лідів", len(private_df))

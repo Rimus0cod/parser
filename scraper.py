@@ -61,6 +61,16 @@ def _setup_logging(config: Config) -> None:
 
 logger = logging.getLogger("imoti_scraper")
 
+
+def _ensure_utf8_stdio() -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -151,6 +161,16 @@ class DetailPageInfo:
     contact_name: str = "-"
     contact_email: str = "-"
     agency_profile_url: str = ""
+
+
+@dataclass
+class ParserRunResult:
+    exit_code: int
+    today: str
+    total_scraped: int = 0
+    new_count: int = 0
+    new_listings: list[Listing] | None = None
+    message: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1545,19 +1565,7 @@ Examples:
 # ---------------------------------------------------------------------------
 
 
-def main() -> int:
-
-    args = _parse_args()
-
-    # ── Load configuration ────────────────────────────────────────────────
-    config = load_config()
-    config.force = args.force
-    config.dry_run = args.dry_run
-    config.update_agencies = args.update_agencies
-    config.backfill_contacts = args.backfill_contacts
-
-    _setup_logging(config)
-
+def run_parser_once(config: Config) -> ParserRunResult:
     today = date.today().isoformat()
     logger.info(
         "=== imoti.bg rental scraper — %s (force=%s, dry_run=%s, update_agencies=%s, backfill_contacts=%s) ===",
@@ -1574,10 +1582,12 @@ def main() -> int:
         sheets.connect()
     except FileNotFoundError as exc:
         logger.error("%s", exc)
-        return 1
+        return ParserRunResult(exit_code=1, today=today, message=str(exc))
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to connect to Google Sheets: %s", exc)
-        return 1
+        return ParserRunResult(
+            exit_code=1, today=today, message=f"Failed to connect to Google Sheets: {exc}"
+        )
 
     # ── HTTP session ──────────────────────────────────────────────────────
     session = _make_session(config)
@@ -1589,7 +1599,9 @@ def main() -> int:
             mysql_store.connect()
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to connect to MySQL: %s", exc)
-            return 1
+            return ParserRunResult(
+                exit_code=1, today=today, message=f"Failed to connect to MySQL: {exc}"
+            )
 
     # ═════════════════════════════════════════════════════════════════════
     # PATH A: --update-agencies
@@ -1601,7 +1613,7 @@ def main() -> int:
             agency_records = scrape_agencies(session, config)
         except Exception as exc:  # noqa: BLE001
             logger.error("Error scraping agencies: %s", exc, exc_info=True)
-            return 1
+            return ParserRunResult(exit_code=1, today=today, message=f"Error scraping agencies: {exc}")
 
         if agency_records:
             _print_agencies_summary(agency_records)
@@ -1618,7 +1630,7 @@ def main() -> int:
                 sheets.upsert_agencies(agency_dicts)
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to upsert agencies: %s", exc, exc_info=True)
-                return 1
+                return ParserRunResult(exit_code=1, today=today, message=f"Failed to upsert agencies: {exc}")
             if mysql_store is not None:
                 if config.dry_run:
                     logger.info(
@@ -1634,7 +1646,11 @@ def main() -> int:
                             exc,
                             exc_info=True,
                         )
-                        return 1
+                        return ParserRunResult(
+                            exit_code=1,
+                            today=today,
+                            message=f"Failed to upsert agencies into MySQL: {exc}",
+                        )
         else:
             logger.warning(
                 "No agency records were scraped from the agencies directory."
@@ -1655,7 +1671,9 @@ def main() -> int:
         agency_contact_map = sheets.load_agency_contact_map()
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to load data from Google Sheets: %s", exc)
-        return 1
+        return ParserRunResult(
+            exit_code=1, today=today, message=f"Failed to load data from Google Sheets: {exc}"
+        )
 
     if mysql_store is not None:
         try:
@@ -1669,7 +1687,11 @@ def main() -> int:
                 exc,
                 exc_info=True,
             )
-            return 1
+            return ParserRunResult(
+                exit_code=1,
+                today=today,
+                message=f"Failed to load agency reference data from MySQL: {exc}",
+            )
 
     contact_resolver = ContactResolver(
         session=session,
@@ -1688,7 +1710,7 @@ def main() -> int:
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("Backfill contacts failed: %s", exc, exc_info=True)
-            return 1
+            return ParserRunResult(exit_code=1, today=today, message=f"Backfill contacts failed: {exc}")
         logger.info("Backfill contacts complete. Rows updated: %d", updated)
         if mysql_store is not None and not config.dry_run:
             try:
@@ -1698,15 +1720,21 @@ def main() -> int:
                 logger.error(
                     "Failed to sync backfilled New_Ads to MySQL: %s", exc, exc_info=True
                 )
-                return 1
-        return 0
+                return ParserRunResult(
+                    exit_code=1,
+                    today=today,
+                    message=f"Failed to sync backfilled New_Ads to MySQL: {exc}",
+                )
+        return ParserRunResult(exit_code=0, today=today, message=f"Backfill complete. Updated rows: {updated}")
 
     # ── Load already-processed IDs ────────────────────────────────────────
     try:
         processed_ids: set[str] = sheets.load_processed_ids()
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to load processed ids from Google Sheets: %s", exc)
-        return 1
+        return ParserRunResult(
+            exit_code=1, today=today, message=f"Failed to load processed ids from Google Sheets: {exc}"
+        )
     if mysql_store is not None:
         try:
             processed_ids |= mysql_store.load_processed_ids()
@@ -1714,7 +1742,9 @@ def main() -> int:
             logger.error(
                 "Failed to load processed ids from MySQL: %s", exc, exc_info=True
             )
-            return 1
+            return ParserRunResult(
+                exit_code=1, today=today, message=f"Failed to load processed ids from MySQL: {exc}"
+            )
 
     if config.force:
         logger.info("--force flag set: ignoring %d processed IDs.", len(processed_ids))
@@ -1725,7 +1755,9 @@ def main() -> int:
         all_listings = scrape_all_pages(session, config)
     except Exception as exc:  # noqa: BLE001
         logger.error("Unexpected error during scraping: %s", exc, exc_info=True)
-        return 1
+        return ParserRunResult(
+            exit_code=1, today=today, message=f"Unexpected error during scraping: {exc}"
+        )
 
     # ── Filter out already-processed ads ─────────────────────────────────
     new_listings = [lst for lst in all_listings if lst.ad_id not in processed_ids]
@@ -1737,7 +1769,14 @@ def main() -> int:
 
     if not new_listings:
         logger.info("No new listings today — nothing to do.")
-        return 0
+        return ParserRunResult(
+            exit_code=0,
+            today=today,
+            total_scraped=len(all_listings),
+            new_count=0,
+            new_listings=[],
+            message="No new listings found.",
+        )
 
     # ── Enrich new listings ────────────────────────────────────────────────
 
@@ -1795,7 +1834,9 @@ def main() -> int:
             sheets.mark_processed(new_ids)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to write to Google Sheets: %s", exc, exc_info=True)
-            return 1
+            return ParserRunResult(
+                exit_code=1, today=today, message=f"Failed to write to Google Sheets: {exc}"
+            )
         if mysql_store is not None:
             try:
                 mysql_rows = []
@@ -1807,7 +1848,9 @@ def main() -> int:
                 mysql_store.mark_processed(new_ids)
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to write data to MySQL: %s", exc, exc_info=True)
-                return 1
+                return ParserRunResult(
+                    exit_code=1, today=today, message=f"Failed to write data to MySQL: {exc}"
+                )
     else:
         logger.info(
             "[DRY-RUN] Would write %d new ad row(s) and %d processed ID(s).",
@@ -1837,7 +1880,30 @@ def main() -> int:
         len(new_listings),
         today,
     )
-    return 0
+    return ParserRunResult(
+        exit_code=0,
+        today=today,
+        total_scraped=len(all_listings),
+        new_count=len(new_listings),
+        new_listings=new_listings,
+        message=f"Done: {len(new_listings)} new listing(s) processed on {today}.",
+    )
+
+
+def main() -> int:
+    _ensure_utf8_stdio()
+    args = _parse_args()
+
+    # ── Load configuration ────────────────────────────────────────────────
+    config = load_config()
+    config.force = args.force
+    config.dry_run = args.dry_run
+    config.update_agencies = args.update_agencies
+    config.backfill_contacts = args.backfill_contacts
+
+    _setup_logging(config)
+    result = run_parser_once(config)
+    return result.exit_code
 
 
 if __name__ == "__main__":

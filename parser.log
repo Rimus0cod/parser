@@ -567,3 +567,413 @@
 2026-03-23 17:13:45,829 INFO     imoti_scraper — Total apartment listings collected: 195
 2026-03-23 17:13:45,830 INFO     imoti_scraper — 195 total apartments scraped; 0 are new (not yet processed).
 2026-03-23 17:13:45,831 INFO     imoti_scraper — No new listings today — nothing to do.
+2026-03-23 22:07:47,724 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getMe "HTTP/1.1 200 OK"
+2026-03-23 22:07:47,728 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-23 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-23 22:07:47,764 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-23 22:07:47,966 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-23 22:07:52,862 INFO     sheets — Google Sheets connection established.
+2026-03-23 22:07:53,986 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-23 22:07:54,775 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-23 22:07:55,489 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-23 22:07:56,199 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-23 22:07:56,941 INFO     sheets — Loaded 237 processed Ad IDs from sheet.
+2026-03-23 22:07:56,950 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-23 22:08:00,713 INFO     imoti_scraper —   Page 1: 11 apartment listing(s) found (11 after dedup).
+2026-03-23 22:08:00,768 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-23 22:08:05,194 INFO     imoti_scraper —   Page 2: 8 apartment listing(s) found (8 after dedup).
+2026-03-23 22:08:05,288 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-23 22:08:09,795 INFO     imoti_scraper —   Page 3: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:08:09,845 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-23 22:08:13,284 INFO     imoti_scraper —   Page 4: 10 apartment listing(s) found (10 after dedup).
+2026-03-23 22:08:13,368 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-23 22:08:17,842 INFO     imoti_scraper —   Page 5: 6 apartment listing(s) found (6 after dedup).
+2026-03-23 22:08:17,897 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-23 22:08:20,109 INFO     imoti_scraper —   Page 6: 8 apartment listing(s) found (8 after dedup).
+2026-03-23 22:08:20,166 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-23 22:08:25,048 WARNING  imoti_scraper — Request error for https://imoti.bg/наеми/page:7 (attempt 1/3): ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-03-23 22:08:30,698 INFO     imoti_scraper —   Page 7: 11 apartment listing(s) found (11 after dedup).
+2026-03-23 22:08:30,752 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-23 22:08:33,106 INFO     imoti_scraper —   Page 8: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:08:33,160 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-23 22:08:36,961 INFO     imoti_scraper —   Page 9: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:08:37,022 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-23 22:08:40,044 INFO     imoti_scraper —   Page 10: 10 apartment listing(s) found (10 after dedup).
+2026-03-23 22:08:40,097 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-23 22:08:42,684 INFO     imoti_scraper —   Page 11: 10 apartment listing(s) found (10 after dedup).
+2026-03-23 22:08:42,739 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-23 22:08:46,830 INFO     imoti_scraper —   Page 12: 5 apartment listing(s) found (5 after dedup).
+2026-03-23 22:08:46,876 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-23 22:08:50,045 INFO     imoti_scraper —   Page 13: 6 apartment listing(s) found (6 after dedup).
+2026-03-23 22:08:50,096 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-23 22:08:56,014 INFO     imoti_scraper —   Page 14: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:08:56,071 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-23 22:08:59,472 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-23 22:08:59,522 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-23 22:09:03,139 INFO     imoti_scraper —   Page 16: 6 apartment listing(s) found (6 after dedup).
+2026-03-23 22:09:03,184 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-23 22:09:06,942 INFO     imoti_scraper —   Page 17: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:09:06,996 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-23 22:09:12,612 INFO     imoti_scraper —   Page 18: 7 apartment listing(s) found (7 after dedup).
+2026-03-23 22:09:12,659 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-23 22:09:16,384 INFO     imoti_scraper —   Page 19: 5 apartment listing(s) found (5 after dedup).
+2026-03-23 22:09:16,440 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-23 22:09:19,576 INFO     imoti_scraper —   Page 20: 4 apartment listing(s) found (4 after dedup).
+2026-03-23 22:09:19,626 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-23 22:09:23,420 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-23 22:09:23,469 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-23 22:09:27,649 INFO     imoti_scraper —   Page 22: 6 apartment listing(s) found (6 after dedup).
+2026-03-23 22:09:27,701 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-23 22:09:30,971 INFO     imoti_scraper —   Page 23: 6 apartment listing(s) found (6 after dedup).
+2026-03-23 22:09:31,021 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-23 22:09:33,487 INFO     imoti_scraper —   Page 24: 5 apartment listing(s) found (5 after dedup).
+2026-03-23 22:09:33,537 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-23 22:09:37,631 INFO     imoti_scraper —   Page 25: 7 apartment listing(s) found (7 after dedup).
+2026-03-23 22:09:37,683 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-23 22:09:41,985 INFO     imoti_scraper —   Page 26: 9 apartment listing(s) found (9 after dedup).
+2026-03-23 22:09:42,041 INFO     imoti_scraper — Total apartment listings collected: 197
+2026-03-23 22:09:42,042 INFO     imoti_scraper — 197 total apartments scraped; 0 are new (not yet processed).
+2026-03-23 22:09:42,043 INFO     imoti_scraper — No new listings today — nothing to do.
+2026-03-23 22:09:42,205 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-23 22:09:42,246 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/deleteWebhook "HTTP/1.1 200 OK"
+2026-03-23 22:09:42,250 INFO     telegram.ext.Application — Application started
+2026-03-23 22:09:52,399 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:02,456 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:12,786 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:22,842 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:33,168 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:43,220 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:10:53,559 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:11:03,612 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:11:13,663 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:11:23,715 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:11:33,767 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-23 22:11:43,819 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:42:12,284 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getMe "HTTP/1.1 200 OK"
+2026-03-24 15:42:12,290 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-24 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-24 15:42:12,322 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-24 15:42:12,379 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-24 15:42:17,046 INFO     sheets — Google Sheets connection established.
+2026-03-24 15:42:17,873 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 15:42:18,579 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-24 15:42:19,355 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-24 15:42:20,078 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-24 15:42:20,802 INFO     sheets — Loaded 237 processed Ad IDs from sheet.
+2026-03-24 15:42:20,816 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-24 15:42:25,200 INFO     imoti_scraper —   Page 1: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 15:42:25,415 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-24 15:42:29,947 INFO     imoti_scraper —   Page 2: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 15:42:30,149 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-24 15:42:34,168 INFO     imoti_scraper —   Page 3: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 15:42:34,230 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-24 15:42:36,986 INFO     imoti_scraper —   Page 4: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 15:42:37,045 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-24 15:42:40,893 INFO     imoti_scraper —   Page 5: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 15:42:40,968 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-24 15:42:43,606 INFO     imoti_scraper —   Page 6: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 15:42:43,671 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-24 15:42:47,862 INFO     imoti_scraper —   Page 7: 11 apartment listing(s) found (11 after dedup).
+2026-03-24 15:42:47,938 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-24 15:42:50,398 INFO     imoti_scraper —   Page 8: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 15:42:50,467 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-24 15:42:52,961 INFO     imoti_scraper —   Page 9: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 15:42:53,029 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-24 15:42:56,106 INFO     imoti_scraper —   Page 10: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 15:42:56,169 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-24 15:42:58,731 INFO     imoti_scraper —   Page 11: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 15:42:58,812 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-24 15:43:03,124 INFO     imoti_scraper —   Page 12: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 15:43:03,196 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-24 15:43:06,468 INFO     imoti_scraper —   Page 13: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 15:43:06,532 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-24 15:43:11,439 INFO     imoti_scraper —   Page 14: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 15:43:11,511 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-24 15:43:15,706 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 15:43:15,760 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-24 15:43:19,209 INFO     imoti_scraper —   Page 16: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 15:43:19,271 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-24 15:43:24,789 INFO     imoti_scraper —   Page 17: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 15:43:24,855 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-24 15:43:29,249 INFO     imoti_scraper —   Page 18: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 15:43:29,296 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-24 15:43:34,402 INFO     imoti_scraper —   Page 19: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 15:43:34,468 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-24 15:43:38,932 INFO     imoti_scraper —   Page 20: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 15:43:39,000 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-24 15:43:43,518 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 15:43:43,585 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-24 15:43:47,966 INFO     imoti_scraper —   Page 22: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 15:43:48,032 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-24 15:43:50,411 INFO     imoti_scraper —   Page 23: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 15:43:50,475 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-24 15:43:56,132 INFO     imoti_scraper —   Page 24: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 15:43:56,208 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-24 15:43:59,571 INFO     imoti_scraper —   Page 25: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 15:43:59,640 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-24 15:44:02,042 INFO     imoti_scraper —   Page 26: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 15:44:02,109 INFO     imoti_scraper — Total apartment listings collected: 194
+2026-03-24 15:44:02,110 INFO     imoti_scraper — 194 total apartments scraped; 2 are new (not yet processed).
+2026-03-24 15:44:02,112 INFO     imoti_scraper — Enriching 2 new listing(s) concurrently …
+2026-03-24 15:44:02,113 INFO     imoti_scraper —   [1/2] Ad 514546 — 'Двустаен апартамент'
+2026-03-24 15:44:02,115 INFO     imoti_scraper —   [2/2] Ad 514545 — 'Двустаен апартамент'
+2026-03-24 15:44:07,681 INFO     sheets — Appending 2 new ad row(s) to 'New_Ads' …
+2026-03-24 15:44:08,508 INFO     sheets — Done appending rows.
+2026-03-24 15:44:08,509 INFO     sheets — Marking 2 Ad ID(s) as processed …
+2026-03-24 15:44:09,577 INFO     email_sender — Building email for 2 ad(s) …
+2026-03-24 15:44:09,590 INFO     email_sender — Sending email via smtp.gmail.com:587 (user=macxi3333@gmail.com) → i.kurochka@gmail.com …
+2026-03-24 15:44:11,451 INFO     email_sender — Email sent successfully.
+2026-03-24 15:44:11,454 INFO     imoti_scraper — === Done: 2 new listing(s) processed on 2026-03-24 ===
+2026-03-24 15:44:11,663 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 15:44:11,713 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/deleteWebhook "HTTP/1.1 200 OK"
+2026-03-24 15:44:11,720 INFO     telegram.ext.Application — Application started
+2026-03-24 15:44:21,858 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:44:31,905 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:44:41,954 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:44:52,002 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:02,053 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:12,111 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:22,168 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:32,218 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:42,275 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:45:52,326 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:02,653 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:12,713 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:22,766 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:32,814 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:42,863 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:46:52,911 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:02,959 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:13,007 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:23,065 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:33,115 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:43,172 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:47:53,221 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:03,268 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:13,331 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:23,388 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:33,436 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:43,484 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:48:53,532 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:03,587 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:13,653 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:23,701 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:33,749 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:43,796 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:49:53,845 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:03,893 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:13,941 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:23,988 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:34,035 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:44,087 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:50:54,145 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:04,195 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:14,245 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:24,293 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:34,357 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:44,419 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:51:54,466 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:04,512 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:14,566 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:24,613 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:34,942 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:44,990 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:52:55,040 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:05,088 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:15,135 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:25,182 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:35,230 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:45,278 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:53:55,325 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:05,374 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:15,422 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:25,469 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:35,517 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:45,565 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:54:55,892 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:05,941 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:15,988 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:26,035 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:36,086 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:46,134 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:55:56,184 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:06,230 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:16,554 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:26,867 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:36,915 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:44,287 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 15:56:44,289 INFO     telegram.ext.Application — Application is stopping. This might take a moment.
+2026-03-24 15:56:44,290 INFO     telegram.ext.Application — Application.stop() complete
+2026-03-24 16:41:20,183 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getMe "HTTP/1.1 200 OK"
+2026-03-24 16:41:20,188 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-24 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-24 16:41:20,192 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-24 16:41:20,236 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-24 16:41:25,546 INFO     sheets — Google Sheets connection established.
+2026-03-24 16:41:25,601 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 16:41:26,330 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-24 16:41:27,063 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-24 16:41:27,785 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-24 16:41:28,516 INFO     sheets — Loaded 239 processed Ad IDs from sheet.
+2026-03-24 16:41:28,517 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-24 16:41:59,544 INFO     imoti_scraper —   Page 1: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:41:59,594 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-24 16:42:05,849 INFO     imoti_scraper —   Page 2: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:42:05,945 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-24 16:42:09,403 INFO     imoti_scraper —   Page 3: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:42:09,493 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-24 16:42:13,995 INFO     imoti_scraper —   Page 4: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:42:14,156 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-24 16:42:21,383 INFO     imoti_scraper —   Page 5: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:42:21,469 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-24 16:42:25,510 INFO     imoti_scraper —   Page 6: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:42:25,590 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-24 16:42:30,590 INFO     imoti_scraper —   Page 7: 11 apartment listing(s) found (11 after dedup).
+2026-03-24 16:42:30,656 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-24 16:42:35,739 INFO     imoti_scraper —   Page 8: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:42:35,792 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-24 16:42:40,052 INFO     imoti_scraper —   Page 9: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:42:40,127 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-24 16:42:44,454 INFO     imoti_scraper —   Page 10: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:42:44,508 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-24 16:42:49,382 INFO     imoti_scraper —   Page 11: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:42:49,519 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-24 16:42:52,608 INFO     imoti_scraper —   Page 12: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:42:52,651 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-24 16:42:57,125 INFO     imoti_scraper —   Page 13: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:42:57,252 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-24 16:43:01,242 INFO     imoti_scraper —   Page 14: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:43:01,300 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-24 16:43:06,353 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:43:06,404 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-24 16:43:10,535 INFO     imoti_scraper —   Page 16: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:43:10,584 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-24 16:43:14,697 INFO     imoti_scraper —   Page 17: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:43:14,777 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-24 16:43:19,718 INFO     imoti_scraper —   Page 18: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:43:19,774 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-24 16:43:24,899 INFO     imoti_scraper —   Page 19: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:43:24,958 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-24 16:43:28,902 INFO     imoti_scraper —   Page 20: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:43:28,969 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-24 16:43:32,413 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:43:32,474 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-24 16:43:37,147 INFO     imoti_scraper —   Page 22: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:43:37,212 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-24 16:43:42,934 INFO     imoti_scraper —   Page 23: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:43:42,988 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-24 16:43:46,654 INFO     imoti_scraper —   Page 24: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:43:46,737 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-24 16:43:49,949 INFO     imoti_scraper —   Page 25: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:43:50,002 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-24 16:43:53,967 INFO     imoti_scraper —   Page 26: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:43:54,031 INFO     imoti_scraper — Total apartment listings collected: 194
+2026-03-24 16:43:54,032 INFO     imoti_scraper — 194 total apartments scraped; 0 are new (not yet processed).
+2026-03-24 16:43:54,033 INFO     imoti_scraper — No new listings today — nothing to do.
+2026-03-24 16:43:54,211 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:43:54,266 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/deleteWebhook "HTTP/1.1 200 OK"
+2026-03-24 16:43:54,269 INFO     telegram.ext.Application — Application started
+2026-03-24 16:44:04,421 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:10,350 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:10,526 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:44:14,611 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:14,726 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:44:14,730 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-24 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-24 16:44:14,739 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-24 16:44:14,795 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-24 16:44:19,956 INFO     sheets — Google Sheets connection established.
+2026-03-24 16:44:19,968 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 16:44:20,687 INFO     sheets — Loaded 147 agency phone numbers from sheet.
+2026-03-24 16:44:21,417 INFO     sheets — Loaded 151 agency names from sheet.
+2026-03-24 16:44:22,147 INFO     sheets — Loaded 151 agency contact records from sheet.
+2026-03-24 16:44:22,926 INFO     sheets — Loaded 239 processed Ad IDs from sheet.
+2026-03-24 16:44:22,927 INFO     imoti_scraper — Scraping listing page 1 → https://imoti.bg/наеми/page:1
+2026-03-24 16:44:24,706 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:25,986 INFO     imoti_scraper —   Page 1: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:44:26,108 INFO     imoti_scraper — Scraping listing page 2 → https://imoti.bg/наеми/page:2
+2026-03-24 16:44:30,734 INFO     imoti_scraper —   Page 2: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:44:30,855 INFO     imoti_scraper — Scraping listing page 3 → https://imoti.bg/наеми/page:3
+2026-03-24 16:44:34,810 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:34,817 INFO     imoti_scraper —   Page 3: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:44:34,934 INFO     imoti_scraper — Scraping listing page 4 → https://imoti.bg/наеми/page:4
+2026-03-24 16:44:39,809 INFO     imoti_scraper —   Page 4: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:44:39,878 INFO     imoti_scraper — Scraping listing page 5 → https://imoti.bg/наеми/page:5
+2026-03-24 16:44:44,814 INFO     imoti_scraper —   Page 5: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:44:44,888 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:44,902 INFO     imoti_scraper — Scraping listing page 6 → https://imoti.bg/наеми/page:6
+2026-03-24 16:44:49,648 INFO     imoti_scraper —   Page 6: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:44:49,807 INFO     imoti_scraper — Scraping listing page 7 → https://imoti.bg/наеми/page:7
+2026-03-24 16:44:53,007 INFO     imoti_scraper —   Page 7: 11 apartment listing(s) found (11 after dedup).
+2026-03-24 16:44:53,189 INFO     imoti_scraper — Scraping listing page 8 → https://imoti.bg/наеми/page:8
+2026-03-24 16:44:54,956 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:44:56,575 INFO     imoti_scraper —   Page 8: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:44:56,669 INFO     imoti_scraper — Scraping listing page 9 → https://imoti.bg/наеми/page:9
+2026-03-24 16:45:00,601 INFO     imoti_scraper —   Page 9: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:45:00,656 INFO     imoti_scraper — Scraping listing page 10 → https://imoti.bg/наеми/page:10
+2026-03-24 16:45:04,192 INFO     imoti_scraper —   Page 10: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:45:04,250 INFO     imoti_scraper — Scraping listing page 11 → https://imoti.bg/наеми/page:11
+2026-03-24 16:45:05,006 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:06,621 INFO     imoti_scraper —   Page 11: 10 apartment listing(s) found (10 after dedup).
+2026-03-24 16:45:06,698 INFO     imoti_scraper — Scraping listing page 12 → https://imoti.bg/наеми/page:12
+2026-03-24 16:45:09,552 INFO     imoti_scraper —   Page 12: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:45:09,627 INFO     imoti_scraper — Scraping listing page 13 → https://imoti.bg/наеми/page:13
+2026-03-24 16:45:13,693 INFO     imoti_scraper —   Page 13: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:45:13,754 INFO     imoti_scraper — Scraping listing page 14 → https://imoti.bg/наеми/page:14
+2026-03-24 16:45:15,057 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:16,586 INFO     imoti_scraper —   Page 14: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:45:16,649 INFO     imoti_scraper — Scraping listing page 15 → https://imoti.bg/наеми/page:15
+2026-03-24 16:45:20,091 INFO     imoti_scraper —   Page 15: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:45:20,142 INFO     imoti_scraper — Scraping listing page 16 → https://imoti.bg/наеми/page:16
+2026-03-24 16:45:25,108 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:25,688 INFO     imoti_scraper —   Page 16: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:45:25,739 INFO     imoti_scraper — Scraping listing page 17 → https://imoti.bg/наеми/page:17
+2026-03-24 16:45:30,275 INFO     imoti_scraper —   Page 17: 9 apartment listing(s) found (9 after dedup).
+2026-03-24 16:45:30,340 INFO     imoti_scraper — Scraping listing page 18 → https://imoti.bg/наеми/page:18
+2026-03-24 16:45:34,447 INFO     imoti_scraper —   Page 18: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:45:34,496 INFO     imoti_scraper — Scraping listing page 19 → https://imoti.bg/наеми/page:19
+2026-03-24 16:45:35,160 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:38,487 INFO     imoti_scraper —   Page 19: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:45:38,535 INFO     imoti_scraper — Scraping listing page 20 → https://imoti.bg/наеми/page:20
+2026-03-24 16:45:43,307 INFO     imoti_scraper —   Page 20: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:45:43,361 INFO     imoti_scraper — Scraping listing page 21 → https://imoti.bg/наеми/page:21
+2026-03-24 16:45:45,211 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:47,851 INFO     imoti_scraper —   Page 21: 4 apartment listing(s) found (4 after dedup).
+2026-03-24 16:45:47,908 INFO     imoti_scraper — Scraping listing page 22 → https://imoti.bg/наеми/page:22
+2026-03-24 16:45:52,114 INFO     imoti_scraper —   Page 22: 6 apartment listing(s) found (6 after dedup).
+2026-03-24 16:45:52,180 INFO     imoti_scraper — Scraping listing page 23 → https://imoti.bg/наеми/page:23
+2026-03-24 16:45:54,494 INFO     imoti_scraper —   Page 23: 5 apartment listing(s) found (5 after dedup).
+2026-03-24 16:45:54,548 INFO     imoti_scraper — Scraping listing page 24 → https://imoti.bg/наеми/page:24
+2026-03-24 16:45:55,261 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:45:56,861 INFO     imoti_scraper —   Page 24: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:45:56,932 INFO     imoti_scraper — Scraping listing page 25 → https://imoti.bg/наеми/page:25
+2026-03-24 16:46:01,611 INFO     imoti_scraper —   Page 25: 7 apartment listing(s) found (7 after dedup).
+2026-03-24 16:46:01,716 INFO     imoti_scraper — Scraping listing page 26 → https://imoti.bg/наеми/page:26
+2026-03-24 16:46:04,770 INFO     imoti_scraper —   Page 26: 8 apartment listing(s) found (8 after dedup).
+2026-03-24 16:46:04,856 INFO     imoti_scraper — Total apartment listings collected: 194
+2026-03-24 16:46:04,858 INFO     imoti_scraper — 194 total apartments scraped; 0 are new (not yet processed).
+2026-03-24 16:46:04,863 INFO     imoti_scraper — No new listings today — nothing to do.
+2026-03-24 16:46:05,066 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:46:05,319 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:15,368 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:18,629 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:18,807 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:46:22,497 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:22,572 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:46:32,549 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:33,953 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:33,966 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 16:46:34,165 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:46:34,268 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:46:44,021 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:46:54,072 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:00,973 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:00,988 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 16:47:01,188 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:47:01,302 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:47:08,785 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:08,978 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:47:11,621 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:11,635 INFO     mysql_store — MySQL connected (127.0.0.1:3306/imoti)
+2026-03-24 16:47:11,798 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:47:11,969 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/sendMessage "HTTP/1.1 200 OK"
+2026-03-24 16:47:21,691 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:25,904 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
+2026-03-24 16:47:25,907 INFO     telegram.ext.Application — Application is stopping. This might take a moment.
+2026-03-24 16:47:25,908 INFO     telegram.ext.Application — Application.stop() complete

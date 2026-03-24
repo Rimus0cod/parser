@@ -140,6 +140,10 @@ class Config:
     # ── Telegram ────────────────────────────────────────────────────────────
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    telegram_allowed_chat_ids: str = ""
+    telegram_history_chunk_size: int = 20
+    telegram_default_history_days: int = 7
+    telegram_startup_preview_count: int = 3
 
     # ── Runtime flags (set by CLI args) ──────────────────────────────────
     force: bool = False
@@ -223,6 +227,10 @@ def load_config() -> Config:
         else None,
         telegram_bot_token=_optional("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=_optional("TELEGRAM_CHAT_ID"),
+        telegram_allowed_chat_ids=_optional("TELEGRAM_ALLOWED_CHAT_IDS"),
+        telegram_history_chunk_size=int(_optional("TELEGRAM_HISTORY_CHUNK_SIZE", "20")),
+        telegram_default_history_days=int(_optional("TELEGRAM_DEFAULT_HISTORY_DAYS", "7")),
+        telegram_startup_preview_count=int(_optional("TELEGRAM_STARTUP_PREVIEW_COUNT", "3")),
         mysql_enabled=_optional_bool("MYSQL_ENABLED", False),
         mysql_host=_optional("MYSQL_HOST", "127.0.0.1"),
         mysql_port=int(_optional("MYSQL_PORT", "3306")),
