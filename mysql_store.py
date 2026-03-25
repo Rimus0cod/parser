@@ -1,29 +1,26 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
-from typing import Any
+from pathlib import Path
+from typing import Any, Optional
 
-from config import Config
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("imoti_scraper")
 
 
 class MySQLStore:
-    def __init__(self, config: Config) -> None:
+    """
+    MySQL storage for scraped data (listings, agencies, processed IDs).
+    """
+
+    def __init__(self, config) -> None:
         self._cfg = config
-        self._conn = None
 
-    def connect(self) -> None:
-        if not self._cfg.mysql_enabled:
-            return
-
+        # Import MySQL connector
         try:
             import mysql.connector  # type: ignore[import-not-found]
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
-                "mysql-connector-python is not installed. "
-                "Run: pip install mysql-connector-python"
+                "mysql-connector-python is not installed. Run: pip install mysql-connector-python"
             ) from exc
 
         self._conn = mysql.connector.connect(
@@ -32,307 +29,273 @@ class MySQLStore:
             user=self._cfg.mysql_user,
             password=self._cfg.mysql_password,
             database=self._cfg.mysql_database,
-            autocommit=True,
             charset="utf8mb4",
             use_unicode=True,
         )
         self._ensure_schema()
-        logger.info("MySQL connected (%s:%s/%s)", self._cfg.mysql_host, self._cfg.mysql_port, self._cfg.mysql_database)
+        logger.info(
+            "MySQL connected (%s:%s/%s)",
+            self._cfg.mysql_host,
+            self._cfg.mysql_port,
+            self._cfg.mysql_database,
+        )
 
     def close(self) -> None:
         if self._conn is not None:
-            try:
-                self._conn.close()
-            except Exception:  # noqa: BLE001
-                pass
+            self._conn.close()
+            self._conn = None
 
     def _ensure_schema(self) -> None:
-        assert self._conn is not None
-        cur = self._conn.cursor()
+        cursor = self._conn.cursor()
+        try:
+            # Listings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS listings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    date DATE NOT NULL,
+                    ad_id VARCHAR(20) NOT NULL UNIQUE,
+                    title TEXT,
+                    price VARCHAR(100),
+                    location VARCHAR(200),
+                    size VARCHAR(50),
+                    link TEXT,
+                    phone VARCHAR(20),
+                    seller_name VARCHAR(200),
+                    ad_type VARCHAR(50),
+                    contact_name VARCHAR(200),
+                    contact_email VARCHAR(200),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_ad_id (ad_id),
+                    INDEX idx_date (date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS processed_ids (
-                ad_id VARCHAR(32) PRIMARY KEY,
-                processed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
+            # Agencies table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS agencies (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    agency_name VARCHAR(200) NOT NULL,
+                    phones TEXT,
+                    city VARCHAR(100),
+                    email VARCHAR(200),
+                    contact_name VARCHAR(200),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_agency_name (agency_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS agencies (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                agency_name VARCHAR(255) NOT NULL,
-                phones TEXT,
-                city VARCHAR(128),
-                email VARCHAR(255),
-                contact_name VARCHAR(255),
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_agency_name (agency_name)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
+            # Processed IDs table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS processed_ids (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    ad_id VARCHAR(20) NOT NULL UNIQUE,
+                    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_ad_id (ad_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS listings (
-                ad_id VARCHAR(32) PRIMARY KEY,
-                date_seen DATE NULL,
-                title TEXT,
-                price VARCHAR(128),
-                location VARCHAR(255),
-                size VARCHAR(64),
-                link TEXT,
-                phone VARCHAR(64),
-                seller_name VARCHAR(255),
-                ad_type VARCHAR(64),
-                contact_name VARCHAR(255),
-                contact_email VARCHAR(255),
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_ad_type (ad_type),
-                INDEX idx_seller_name (seller_name(191))
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        cur.close()
+            self._conn.commit()
+            logger.info("MySQL schema verified/created.")
+        finally:
+            cursor.close()
 
-    def _ensure_conn(self) -> None:
-        if self._conn is None:
-            raise RuntimeError("MySQLStore.connect() must be called first.")
+    def store_listings(self, listings) -> None:
+        """
+        Store listings in the database.
+        """
+        if not listings:
+            return
+
+        cursor = self._conn.cursor()
+        try:
+            for listing in listings:
+                # Handle both dictionary and Listing object formats
+                if hasattr(listing, "ad_id"):
+                    # It's a Listing object
+                    values = (
+                        listing.ad_id,
+                        listing.title,
+                        listing.price,
+                        listing.location,
+                        listing.size,
+                        listing.link,
+                        listing.phone,
+                        listing.seller_name,
+                        listing.ad_type,
+                        listing.contact_name,
+                        listing.contact_email,
+                    )
+                else:
+                    # It's a dictionary
+                    values = (
+                        listing.get("ad_id", ""),
+                        listing.get("title", ""),
+                        listing.get("price", ""),
+                        listing.get("location", ""),
+                        listing.get("size", ""),
+                        listing.get("link", ""),
+                        listing.get("phone", ""),
+                        listing.get("seller_name", ""),
+                        listing.get("ad_type", ""),
+                        listing.get("contact_name", ""),
+                        listing.get("contact_email", ""),
+                    )
+
+                cursor.execute(
+                    """
+                    INSERT INTO listings
+                    (ad_id, title, price, location, size, link, phone, seller_name, ad_type, contact_name, contact_email)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        title = VALUES(title),
+                        price = VALUES(price),
+                        location = VALUES(location),
+                        size = VALUES(size),
+                        link = VALUES(link),
+                        phone = VALUES(phone),
+                        seller_name = VALUES(seller_name),
+                        ad_type = VALUES(ad_type),
+                        contact_name = VALUES(contact_name),
+                        contact_email = VALUES(contact_email)
+                """,
+                    values,
+                )
+
+            self._conn.commit()
+            logger.info(f"Stored {len(listings)} listings in MySQL")
+        except Exception as e:
+            self._conn.rollback()
+            logger.error(f"Failed to store listings in MySQL: {e}")
+            raise
+        finally:
+            cursor.close()
+
+    def upsert_agencies(self, agencies: list[dict[str, str]]) -> None:
+        """
+        Insert or update agencies in the database.
+        """
+        if not agencies:
+            return
+
+        cursor = self._conn.cursor()
+        try:
+            for agency in agencies:
+                cursor.execute(
+                    """
+                    INSERT INTO agencies (agency_name, phones, city, email, contact_name)
+                    VALUES (%(Agency_Name)s, %(Phones)s, %(City)s, %(Email)s, %(Contact_Name)s)
+                    ON DUPLICATE KEY UPDATE
+                        phones = COALESCE(NULLIF(%(Phones)s, ''), phones),
+                        city = COALESCE(NULLIF(%(City)s, ''), city),
+                        email = COALESCE(NULLIF(%(Email)s, ''), email),
+                        contact_name = COALESCE(NULLIF(%(Contact_Name)s, ''), contact_name)
+                """,
+                    agency,
+                )
+
+            self._conn.commit()
+            logger.info(f"Upserted {len(agencies)} agencies in MySQL")
+        except Exception as e:
+            self._conn.rollback()
+            logger.error(f"Failed to upsert agencies in MySQL: {e}")
+            raise
+        finally:
+            cursor.close()
 
     def load_processed_ids(self) -> set[str]:
-        self._ensure_conn()
-        cur = self._conn.cursor()
-        cur.execute("SELECT ad_id FROM processed_ids")
-        out = {row[0].strip() for row in cur.fetchall() if row and row[0]}
-        cur.close()
-        return out
-
-    def mark_processed(self, ad_ids: list[str]) -> None:
-        if not ad_ids:
-            return
-        self._ensure_conn()
-        cur = self._conn.cursor()
-        cur.executemany(
-            """
-            INSERT INTO processed_ids (ad_id)
-            VALUES (%s)
-            ON DUPLICATE KEY UPDATE processed_at = CURRENT_TIMESTAMP
-            """,
-            [(x,) for x in ad_ids],
-        )
-        cur.close()
+        """
+        Load all processed ad IDs from the database.
+        """
+        cursor = self._conn.cursor()
+        try:
+            cursor.execute("SELECT ad_id FROM processed_ids")
+            rows = cursor.fetchall()
+            return {row[0] for row in rows}
+        finally:
+            cursor.close()
 
     def load_agency_phones(self) -> set[str]:
-        self._ensure_conn()
-        cur = self._conn.cursor()
-        cur.execute("SELECT phones FROM agencies")
-        phones: set[str] = set()
-        for (raw,) in cur.fetchall():
-            if not raw:
-                continue
-            for ph in str(raw).split(","):
-                ph = ph.strip()
-                if ph:
-                    phones.add(ph)
-        cur.close()
-        return phones
+        """
+        Load all agency phone numbers from the database.
+        """
+        cursor = self._conn.cursor()
+        try:
+            cursor.execute("SELECT phones FROM agencies WHERE phones IS NOT NULL AND phones != ''")
+            rows = cursor.fetchall()
+            phones_set = set()
+            for row in rows:
+                phones_str = row[0]
+                if phones_str:
+                    # Split comma-separated phones
+                    for phone in phones_str.split(","):
+                        phone = phone.strip()
+                        if phone:
+                            phones_set.add(phone)
+            return phones_set
+        finally:
+            cursor.close()
 
     def load_agency_names(self) -> set[str]:
-        self._ensure_conn()
-        cur = self._conn.cursor()
-        cur.execute("SELECT agency_name FROM agencies")
-        out = {str(row[0]).strip().lower() for row in cur.fetchall() if row and row[0]}
-        cur.close()
-        return out
+        """
+        Load all agency names from the database.
+        """
+        cursor = self._conn.cursor()
+        try:
+            cursor.execute("SELECT agency_name FROM agencies WHERE agency_name IS NOT NULL")
+            rows = cursor.fetchall()
+            return {row[0].strip() for row in rows if row[0].strip()}
+        finally:
+            cursor.close()
 
     def load_agency_contact_map(self) -> dict[str, dict[str, str]]:
-        self._ensure_conn()
-        cur = self._conn.cursor()
-        cur.execute("SELECT agency_name, email, contact_name FROM agencies")
-        out: dict[str, dict[str, str]] = {}
-        for row in cur.fetchall():
-            name = str(row[0] or "").strip().lower()
-            if not name:
-                continue
-            out[name] = {
-                "contact_email": str(row[1] or "-").strip() or "-",
-                "contact_name": str(row[2] or "-").strip() or "-",
-            }
-        cur.close()
-        return out
+        """
+        Load agency contact mapping from the database.
+        """
+        cursor = self._conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT agency_name, phones, email, contact_name FROM agencies")
+            rows = cursor.fetchall()
 
-    def upsert_agencies(self, rows: list[dict[str, str]]) -> None:
-        if not rows:
-            return
-        self._ensure_conn()
-
-        cur = self._conn.cursor()
-        cur.execute("SELECT agency_name, phones, city, email, contact_name FROM agencies")
-        existing: dict[str, dict[str, str]] = {}
-        for row in cur.fetchall():
-            key = str(row[0] or "").strip().lower()
-            if not key:
-                continue
-            existing[key] = {
-                "agency_name": str(row[0] or "").strip(),
-                "phones": str(row[1] or "").strip(),
-                "city": str(row[2] or "").strip(),
-                "email": str(row[3] or "").strip(),
-                "contact_name": str(row[4] or "").strip(),
-            }
-
-        payload = []
-        for src in rows:
-            name = str(src.get("Agency_Name", "")).strip()
-            if not name:
-                continue
-            key = name.lower()
-
-            old = existing.get(key, {})
-            old_phones = {x.strip() for x in old.get("phones", "").split(",") if x.strip()}
-            new_phones = {x.strip() for x in str(src.get("Phones", "")).split(",") if x.strip()}
-            merged_phones = ",".join(sorted(old_phones | new_phones))
-
-            city_old = old.get("city", "").strip()
-            city_new = str(src.get("City", "")).strip()
-            city = city_old or city_new
-
-            email_old = old.get("email", "").strip()
-            email_new = str(src.get("Email", "")).strip()
-            email = email_old if email_old and email_old != "-" else (email_new or "-")
-
-            cn_old = old.get("contact_name", "").strip()
-            cn_new = str(src.get("Contact_Name", "")).strip()
-            contact_name = cn_old if cn_old and cn_old != "-" else (cn_new or "-")
-
-            payload.append((name, merged_phones, city, email, contact_name))
-
-        if payload:
-            cur.executemany(
-                """
-                INSERT INTO agencies (agency_name, phones, city, email, contact_name)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    phones = VALUES(phones),
-                    city = VALUES(city),
-                    email = VALUES(email),
-                    contact_name = VALUES(contact_name)
-                """,
-                payload,
-            )
-
-        cur.close()
-
-    def upsert_listings(self, rows: list[dict[str, Any]]) -> None:
-        if not rows:
-            return
-        self._ensure_conn()
-
-        payload = []
-        for r in rows:
-            payload.append(
-                (
-                    str(r.get("Ad_ID", "")),
-                    str(r.get("Date", "")) or None,
-                    str(r.get("Title", "")),
-                    str(r.get("Price", "")),
-                    str(r.get("Location", "")),
-                    str(r.get("Size", "")),
-                    str(r.get("Link", "")),
-                    str(r.get("Phone", "")),
-                    str(r.get("Seller_Name", "")),
-                    str(r.get("Type", "")),
-                    str(r.get("Contact_Name", "-")) or "-",
-                    str(r.get("Contact_Email", "-")) or "-",
-                )
-            )
-
-        cur = self._conn.cursor()
-        cur.executemany(
-            """
-            INSERT INTO listings (
-                ad_id, date_seen, title, price, location, size, link,
-                phone, seller_name, ad_type, contact_name, contact_email
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                date_seen = VALUES(date_seen),
-                title = VALUES(title),
-                price = VALUES(price),
-                location = VALUES(location),
-                size = VALUES(size),
-                link = VALUES(link),
-                phone = VALUES(phone),
-                seller_name = VALUES(seller_name),
-                ad_type = VALUES(ad_type),
-                contact_name = VALUES(contact_name),
-                contact_email = VALUES(contact_email)
-            """,
-            payload,
-        )
-        cur.close()
-
-    def upsert_from_new_ads_sheet_rows(self, rows: list[dict[str, Any]]) -> None:
-        """Persist rows loaded from SheetsClient.load_new_ads_for_backfill()."""
-        shaped = []
-        for r in rows:
-            shaped.append(
-                {
-                    "Date": "",
-                    "Ad_ID": r.get("ad_id", ""),
-                    "Title": "",
-                    "Price": "",
-                    "Location": "",
-                    "Size": "",
-                    "Link": r.get("link", ""),
-                    "Phone": r.get("phone", ""),
-                    "Seller_Name": r.get("seller_name", ""),
-                    "Type": r.get("ad_type", ""),
-                    "Contact_Name": r.get("contact_name", "-") or "-",
-                    "Contact_Email": r.get("contact_email", "-") or "-",
+            result = {}
+            for row in rows:
+                agency_info = {
+                    "contact_name": row["contact_name"] or "",
+                    "email": row["email"] or "",
+                    "phone": row["phones"] or "",
                 }
-            )
-        self.upsert_listings(shaped)
 
-    def query_listings(
-        self,
-        *,
-        city: str | None = None,
-        start_date: date | None = None,
-        end_date: date | None = None,
-        ad_type: str | None = None,
-        limit: int | None = None,
-    ) -> list[dict[str, Any]]:
-        self._ensure_conn()
-        cur = self._conn.cursor(dictionary=True)
+                # Map by agency name
+                if row["agency_name"]:
+                    result[row["agency_name"].lower()] = agency_info
 
-        clauses: list[str] = []
-        params: list[Any] = []
-        if city:
-            clauses.append("location LIKE %s")
-            params.append(f"%{city}%")
-        if start_date:
-            clauses.append("date_seen >= %s")
-            params.append(start_date.isoformat())
-        if end_date:
-            clauses.append("date_seen <= %s")
-            params.append(end_date.isoformat())
-        if ad_type:
-            clauses.append("ad_type = %s")
-            params.append(ad_type)
+                # Map by phone numbers
+                if row["phones"]:
+                    for phone in row["phones"].split(","):
+                        phone = phone.strip()
+                        if phone:
+                            result[phone] = agency_info
 
-        sql = "SELECT * FROM listings"
-        if clauses:
-            sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY date_seen DESC, updated_at DESC"
-        if limit is not None:
-            sql += " LIMIT %s"
-            params.append(int(limit))
+            return result
+        finally:
+            cursor.close()
 
-        cur.execute(sql, tuple(params))
-        rows = cur.fetchall()
-        cur.close()
-        return rows
+    def mark_processed(self, ad_ids: list[str]) -> None:
+        """
+        Mark ad IDs as processed in the database.
+        """
+        if not ad_ids:
+            return
+
+        cursor = self._conn.cursor()
+        try:
+            # Use multi-row insert to efficiently add multiple IDs
+            values = [(ad_id,) for ad_id in ad_ids]
+            cursor.executemany("INSERT IGNORE INTO processed_ids (ad_id) VALUES (%s)", values)
+            self._conn.commit()
+            logger.info(f"Marked {len(ad_ids)} ads as processed in MySQL")
+        except Exception as e:
+            self._conn.rollback()
+            logger.error(f"Failed to mark processed IDs in MySQL: {e}")
+            raise
+        finally:
+            cursor.close()

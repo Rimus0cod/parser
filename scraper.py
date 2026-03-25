@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import logging
 import random
 import re
 import sys
-import time
-import concurrent.futures
 import threading
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -25,6 +25,7 @@ from config import Config, load_config
 from email_sender import send_email
 from mysql_store import MySQLStore
 from sheets import SheetsClient, normalise_phone
+from utils import extract_email, extract_names, extract_phone_numbers, looks_like_person_name
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -70,6 +71,7 @@ def _ensure_utf8_stdio() -> None:
                 stream.reconfigure(encoding="utf-8", errors="replace")
             except Exception:  # noqa: BLE001
                 pass
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -221,13 +223,9 @@ def _polite_get(
             return resp
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"
-            logger.warning(
-                "HTTP %s for %s (attempt %d/%d)", status, url, attempt, retries
-            )
+            logger.warning("HTTP %s for %s (attempt %d/%d)", status, url, attempt, retries)
         except requests.RequestException as exc:
-            logger.warning(
-                "Request error for %s (attempt %d/%d): %s", url, attempt, retries, exc
-            )
+            logger.warning("Request error for %s (attempt %d/%d): %s", url, attempt, retries, exc)
 
         if attempt < retries:
             wait = backoff * attempt
@@ -245,7 +243,6 @@ def _polite_get(
 # ---------------------------------------------------------------------------
 
 _AD_ID_RE = re.compile(r"-(\d{4,10})\.htm$", re.IGNORECASE)
-
 
 _PHONE_TEXT_RE = re.compile(
     r"(?:тел\.?\s*:?\s*)?(\+?359[\s\-]?|0)(\d[\d\s\-]{6,12}\d)",
@@ -269,12 +266,12 @@ def _is_apartment(title: str, url: str) -> bool:
 
 
 def _extract_phone_from_text(text: str) -> str:
+    """Extract the first valid phone number from text using improved logic."""
+    if not text:
+        return ""
 
-    match = _PHONE_TEXT_RE.search(text)
-    if match:
-        raw = match.group(0)
-        return normalise_phone(raw)
-    return ""
+    phones = extract_phone_numbers(text)
+    return phones[0] if phones else ""
 
 
 def parse_listing_page(
@@ -338,9 +335,7 @@ def _parse_card(
     # ── Price ─────────────────────────────────────────────────────────────
     price_el = article.select_one(".product-classic-price")
     if price_el:
-        price_lines = [
-            ln.strip() for ln in price_el.get_text("\n").splitlines() if ln.strip()
-        ]
+        price_lines = [ln.strip() for ln in price_el.get_text("\n").splitlines() if ln.strip()]
         price = price_lines[0] if price_lines else ""
     else:
         price = ""
@@ -383,7 +378,7 @@ def _extract_phone_from_card(article: BeautifulSoup) -> str:
     tel_link = article.select_one('a[href^="tel:"]')
     if tel_link:
         raw = tel_link.get("href", "").replace("tel:", "")
-        phone = normalise_phone(raw)
+        phone = _extract_phone_from_text(raw)
         if phone:
             return phone
 
@@ -397,16 +392,15 @@ def _extract_phone_from_card(article: BeautifulSoup) -> str:
     ):
         el = article.select_one(selector)
         if el:
-            phone = normalise_phone(el.get_text(strip=True))
-            if len(phone) >= 9:  # sanity check: real Bulgarian numbers are 9-12 digits
-                return phone
+            phones = extract_phone_numbers(el.get_text(strip=True))
+            if phones:
+                return phones[0]
 
     # 3. Text scan for "Тел" prefix in the full card text
     full_text = article.get_text(" ", strip=True)
-    if "тел" in full_text.lower():
-        phone = _extract_phone_from_text(full_text)
-        if phone:
-            return phone
+    phone = _extract_phone_from_text(full_text)
+    if phone:
+        return phone
 
     return ""
 
@@ -426,66 +420,72 @@ def _extract_seller_name_from_card(article: BeautifulSoup) -> str:
         if el:
             name = el.get_text(strip=True)
             if name:
+                # Check if the name looks like a person's name
+                if looks_like_person_name(name):
+                    return name
+                # If it doesn't look like a person's name, return as seller name
                 return name
+
+    # If no specific selector found, try to extract from the full article
+    text_content = article.get_text(" ", strip=True)
+    names = extract_names(text_content)
+    if names:
+        return names[0]
 
     return ""
 
 
-# ---------------------------------------------------------------------------
-# Detail-page parser
-# ---------------------------------------------------------------------------
-
-
-def parse_detail_page(html: str) -> DetailPageInfo:
+def parse_detail_page(html: str, url: str = "") -> DetailPageInfo:
 
     soup = BeautifulSoup(html, "html.parser")
     info = DetailPageInfo()
 
-    # ── Phone + seller from primary listing blocks ────────────────────────
-    block_info = soup.select_one("div.block-info")
-    if block_info:
-        h3 = block_info.select_one("h3")
-        if h3:
-            info.seller_name = h3.get_text(strip=True)
-
-        tel_link = block_info.select_one('a[href^="tel:"]')
-        if tel_link:
-            info.phone = normalise_phone(tel_link.get("href", "").replace("tel:", ""))
-
-        if not info.phone:
-            person_link = block_info.select_one(".block-person-link")
-            if person_link:
-                info.phone = normalise_phone(person_link.get_text(strip=True))
-
-    if not info.phone or not info.seller_name:
-        block_agent = soup.select_one("div.block-agent")
-        if block_agent:
-            if not info.seller_name:
-                name_el = block_agent.select_one(
-                    "h3, .block-agent-name, [class*='name']"
-                )
-                if name_el:
-                    info.seller_name = name_el.get_text(strip=True)
-            if not info.phone:
-                tel_link = block_agent.select_one('a[href^="tel:"]')
-                if tel_link:
-                    info.phone = normalise_phone(
-                        tel_link.get("href", "").replace("tel:", "")
-                    )
-
-    if not info.phone:
-        any_tel = soup.select_one('a[href^="tel:"]')
-        if any_tel:
-            info.phone = normalise_phone(any_tel.get("href", "").replace("tel:", ""))
+    # ── Seller name from page title or header ─────────────────────────────
+    for sel in (
+        "h1 a",
+        ".product-title a",
+        ".property-title",
+        "[class*='owner']",
+        "[class*='seller']",
+        "[class*='agency']",
+    ):
+        el = soup.select_one(sel)
+        if el:
+            info.seller_name = el.get_text(strip=True)
+            if info.seller_name:
+                break
 
     if not info.seller_name:
-        for el in soup.select(
-            ".published-by, .posted-by, [class*='author'], [class*='contact']"
-        ):
-            text = el.get_text(strip=True)
-            if text:
-                info.seller_name = text
+        title_tag = soup.select_one("title")
+        if title_tag:
+            # Extract seller from title like "Продава двустаен апартамент в Студентски | Частно лице"
+            title_text = title_tag.get_text()
+            if "|" in title_text:
+                potential_seller = title_text.split("|")[-1].strip()
+                if looks_like_person_name(potential_seller):
+                    info.seller_name = potential_seller
+
+    # ── Phone number extraction ────────────────────────────────────────────
+    # First, try to extract from structured elements
+    for sel in (
+        ".phone-number",
+        ".contact-phone",
+        "[class*='phone']",
+        "[class*='tel']",
+    ):
+        el = soup.select_one(sel)
+        if el:
+            phones = extract_phone_numbers(el.get_text(strip=True))
+            if phones:
+                info.phone = phones[0]
                 break
+
+    # If not found in structured elements, search in all text
+    if not info.phone:
+        all_text = soup.get_text(" ", strip=True)
+        phones = extract_phone_numbers(all_text)
+        if phones:
+            info.phone = phones[0]
 
     # ── Contact name/email from card blocks ───────────────────────────────
     info.contact_name = _extract_contact_name_from_detail_soup(soup)
@@ -507,13 +507,13 @@ def _extract_contact_name_from_detail_soup(soup: BeautifulSoup) -> str:
             if _AGU_HREF_RE.search(href):
                 continue
             candidate = a_tag.get_text(" ", strip=True)
-            if _looks_like_person_name(candidate):
+            if looks_like_person_name(candidate):
                 return candidate
 
         # Fallback tags inside block.
         for tag in block.find_all(["span", "strong", "b", "p", "div"]):
             candidate = tag.get_text(" ", strip=True)
-            if _looks_like_person_name(candidate):
+            if looks_like_person_name(candidate):
                 return candidate
 
         # Last resort: use block text stripped from phone/email.
@@ -521,7 +521,7 @@ def _extract_contact_name_from_detail_soup(soup: BeautifulSoup) -> str:
         text = _EMAIL_RE.sub("", text)
         text = _PHONE_TEXT_RE.sub("", text)
         text = text.strip(" @,;:|–-")
-        if _looks_like_person_name(text):
+        if looks_like_person_name(text):
             return text
 
     # Secondary generic selectors.
@@ -536,7 +536,7 @@ def _extract_contact_name_from_detail_soup(soup: BeautifulSoup) -> str:
         if not el:
             continue
         candidate = el.get_text(" ", strip=True)
-        if _looks_like_person_name(candidate):
+        if looks_like_person_name(candidate):
             return candidate
 
     return "-"
@@ -551,9 +551,9 @@ def _extract_contact_email_from_detail_soup(soup: BeautifulSoup) -> str:
             if email:
                 return email
         txt = root.get_text(" ", strip=True)
-        match = _EMAIL_RE.search(txt)
-        if match:
-            return match.group(0)
+        matches = extract_email(txt)
+        if matches:
+            return matches[0]
 
     # 2) Any mailto on the page.
     mail = soup.select_one('a[href^="mailto:"]')
@@ -567,9 +567,9 @@ def _extract_contact_email_from_detail_soup(soup: BeautifulSoup) -> str:
         el = soup.select_one(container)
         if not el:
             continue
-        match = _EMAIL_RE.search(el.get_text(" ", strip=True))
-        if match:
-            return match.group(0)
+        matches = extract_email(el.get_text(" ", strip=True))
+        if matches:
+            return matches[0]
 
     return "-"
 
@@ -580,27 +580,13 @@ def _extract_agency_profile_url_from_detail_soup(soup: BeautifulSoup) -> str:
             href = a_tag.get("href", "").strip()
             if not href or not _AGU_HREF_RE.search(href):
                 continue
-            return (
-                href if href.startswith("http") else urljoin("https://imoti.bg/", href)
-            )
+            return href if href.startswith("http") else urljoin("https://imoti.bg/", href)
     return ""
 
 
 def _looks_like_person_name(text: str) -> bool:
-    value = (text or "").strip()
-    if len(value) < 2:
-        return False
-    lower = value.lower()
-    banned_parts = ("частно лице", "агенция", "imoti", "@", "http")
-    if any(p in lower for p in banned_parts):
-        return False
-    if _EMAIL_RE.search(value):
-        return False
-    digits = sum(ch.isdigit() for ch in value)
-    if digits > 0 and digits / max(len(value), 1) > 0.3:
-        return False
-    words = [w for w in value.split() if w]
-    return len(words) >= 2
+    """Use improved name validation from utils module."""
+    return looks_like_person_name(text)
 
 
 # ---------------------------------------------------------------------------
@@ -648,68 +634,60 @@ def scrape_all_pages(
         logger.info("Scraping listing page %d → %s", page_num, url)
 
         resp = _polite_get(session, url, config)
-        if resp is None:
-            logger.warning("Failed to fetch page %d — stopping pagination.", page_num)
-            break
+        if not resp:
+            logger.error("Failed to fetch page %d", page_num)
+            continue
 
-        page_listings = parse_listing_page(
-            resp.text,
-            base_url="https://imoti.bg/",
-            city_filter=config.city_filter,
-        )
+        try:
+            listings = parse_listing_page(resp.text, url, config.city_filter)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to parse page %d: %s", page_num, exc)
+            continue
 
-        # Deduplicate within the current run (site may repeat ads across pages).
-        new_on_page: list[Listing] = []
-        for lst in page_listings:
-            if lst.ad_id not in seen_ids:
-                seen_ids.add(lst.ad_id)
-                new_on_page.append(lst)
+        new_on_page = 0
+        for listing in listings:
+            if listing.ad_id not in seen_ids:
+                all_listings.append(listing)
+                seen_ids.add(listing.ad_id)
+                new_on_page += 1
 
         logger.info(
-            "  Page %d: %d apartment listing(s) found (%d after dedup).",
+            "Found %d new listings on page %d (total so far: %d)",
+            new_on_page,
             page_num,
-            len(page_listings),
-            len(new_on_page),
+            len(all_listings),
         )
-        all_listings.extend(new_on_page)
 
-        # If the page returned zero results, we've gone past the last page.
-        if not page_listings:
-            logger.info(
-                "No listings on page %d — reached the end of results.", page_num
-            )
+        if not _has_next_page(BeautifulSoup(resp.text, "html.parser")):
+            logger.info("No more pages detected, stopping early.")
             break
 
-        # Check for a "next page" link as a secondary stop condition.
-        soup = BeautifulSoup(resp.text, "html.parser")
-        if not _has_next_page(soup) and page_num > 1:
-            logger.info("No 'next page' link on page %d — stopping.", page_num)
-            break
-
-    logger.info("Total apartment listings collected: %d", len(all_listings))
     return all_listings
 
 
 def _resolve_agency_contact_key(
-    seller_name_lower: str,
-    agency_contacts: dict[str, dict[str, str]],
-) -> str:
-    """Resolve agency key by exact/prefix/substring match (longest wins)."""
-    if not seller_name_lower:
-        return ""
-    if seller_name_lower in agency_contacts:
-        return seller_name_lower
+    listing: Listing,
+    agency_phones: set[str],
+    agency_names: set[str],
+) -> Optional[tuple[str, str]]:
+    """
+    Resolve if a listing belongs to an agency based on phone or name match.
 
-    candidates: list[tuple[int, str]] = []
-    for key in agency_contacts:
-        if seller_name_lower.startswith(key) or key.startswith(seller_name_lower):
-            candidates.append((len(key), key))
-        elif key in seller_name_lower or seller_name_lower in key:
-            candidates.append((len(key), key))
-    if not candidates:
-        return ""
-    candidates.sort(key=lambda t: t[0], reverse=True)
-    return candidates[0][1]
+    Returns:
+        (agency_phone, agency_name) tuple if match found, None otherwise
+    """
+    if not listing.phone and not listing.seller_name:
+        return None
+
+    # Match by phone
+    if listing.phone in agency_phones:
+        return (listing.phone, "")
+
+    # Match by name
+    if listing.seller_name and listing.seller_name in agency_names:
+        return ("", listing.seller_name)
+
+    return None
 
 
 class ContactResolver:
@@ -737,7 +715,7 @@ class ContactResolver:
         if resp is None:
             info = DetailPageInfo()
         else:
-            info = parse_detail_page(resp.text)
+            info = parse_detail_page(resp.text, listing.link)
         self._detail_cache[key] = info
         return info
 
@@ -749,9 +727,7 @@ class ContactResolver:
         if seller_name_lower in self._agency_cache:
             return self._agency_cache[seller_name_lower]
 
-        key = _resolve_agency_contact_key(
-            seller_name_lower, self._agency_contacts_source
-        )
+        key = _resolve_agency_contact_key(seller_name_lower, self._agency_contacts_source)
         if not key:
             info = {"contact_name": CONTACT_SENTINEL, "contact_email": CONTACT_SENTINEL}
             self._agency_cache[seller_name_lower] = info
@@ -788,7 +764,6 @@ def enrich_listing(
     agency_names: set[str],
     contact_resolver: ContactResolver,
 ) -> None:
-
     detail_info: Optional[DetailPageInfo] = None
 
     def ensure_detail() -> DetailPageInfo:
@@ -824,7 +799,7 @@ def enrich_listing(
         agency_names=agency_names,
     )
 
-    if listing.ad_type == "приватний":
+    if listing.ad_type == "частно лице":
         detail = ensure_detail()
         listing.contact_name = detail.contact_name or CONTACT_SENTINEL
         listing.contact_email = detail.contact_email or CONTACT_SENTINEL
@@ -846,10 +821,7 @@ def enrich_listing(
                 profile_contact = contact_resolver.resolve_from_agency_profile(
                     detail.agency_profile_url
                 )
-                if (
-                    name == CONTACT_SENTINEL
-                    and profile_contact["contact_name"] != CONTACT_SENTINEL
-                ):
+                if name == CONTACT_SENTINEL and profile_contact["contact_name"] != CONTACT_SENTINEL:
                     name = profile_contact["contact_name"]
                 if (
                     email == CONTACT_SENTINEL
@@ -880,20 +852,20 @@ def _classify_listing(
 
     # 1. Phone in agency phone set.
     if phone and phone in agency_phones:
-        return "від агенції"
+        return "от агенция"
 
     # 2. Seller name contains any agency name substring.
     if seller_name:
         seller_lower = seller_name.lower()
         for agency_name in agency_names:
             if agency_name and agency_name in seller_lower:
-                return "від агенції"
+                return "от агенция"
 
-    return "приватний"
+    return "частно лице"
 
 
 # ---------------------------------------------------------------------------
-# Agency scraping — for --update-agencies
+# Agency scraping
 # ---------------------------------------------------------------------------
 
 
@@ -903,427 +875,189 @@ def scrape_agencies(
 ) -> list[AgencyRecord]:
 
     all_agencies: list[AgencyRecord] = []
-    seen_names: set[str] = set()  # dedup by lowercased name within this run
+    seen_agencies: set[str] = set()
 
-    # ── Pass 1: collect from list pages ───────────────────────────────────
     for page_num in range(1, config.max_agency_pages + 1):
         url = config.agencies_url.format(page=page_num)
         logger.info("Scraping agencies page %d → %s", page_num, url)
 
         resp = _polite_get(session, url, config)
-        if resp is None:
-            logger.warning("Failed to fetch agency page %d — stopping.", page_num)
-            break
-
-        page_agencies = _parse_agency_page(resp.text)
-
-        new_on_page: list[AgencyRecord] = []
-        for rec in page_agencies:
-            key = rec.agency_name.lower()
-            if key not in seen_names:
-                seen_names.add(key)
-                new_on_page.append(rec)
-
-        logger.info(
-            "  Agency page %d: %d record(s) (%d after dedup).",
-            page_num,
-            len(page_agencies),
-            len(new_on_page),
-        )
-        all_agencies.extend(new_on_page)
-
-        if not page_agencies:
-            logger.info("No agencies on page %d — stopping.", page_num)
-            break
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        if not _has_next_page(soup) and page_num > 1:
-            logger.info("No 'next page' link on agency page %d — stopping.", page_num)
-            break
-
-    logger.info(
-        "Agency list pages done — %d unique agencies collected. "
-        "Now fetching profile pages for Contact Name / Email …",
-        len(all_agencies),
-    )
-
-    # ── Pass 2: enrich each agency from its profile page ──────────────────
-    # The delay is handled inside parse_agency_details() via _polite_get()
-    # which already applies config.request_delay_min / max (2–5 s).
-    # That is polite enough; no extra sleep is needed here.
-    for idx, rec in enumerate(all_agencies, start=1):
-        if not rec.detail_url:
-            logger.debug(
-                "  [%d/%d] %s — no profile URL, skipping detail fetch.",
-                idx,
-                len(all_agencies),
-                rec.agency_name,
-            )
-            # Ensure sentinel values so the row is complete.
-            if not rec.contact_name:
-                rec.contact_name = "-"
-            if not rec.email:
-                rec.email = "-"
+        if not resp:
+            logger.error("Failed to fetch agencies page %d", page_num)
             continue
 
-        logger.info(
-            "  [%d/%d] Fetching profile: %s → %s",
-            idx,
-            len(all_agencies),
-            rec.agency_name,
-            rec.detail_url,
-        )
         try:
-            details = parse_agency_details(rec.detail_url, session, config)
+            agencies = _parse_agency_page(resp.text, url)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "  Could not fetch profile for '%s': %s",
-                rec.agency_name,
-                exc,
-            )
-            details = {"contact_name": "-", "email": "-"}
+            logger.error("Failed to parse agencies page %d: %s", page_num, exc)
+            continue
 
-        # Apply fetched contact_name (always — list page doesn't have it).
-        rec.contact_name = details["contact_name"]
+        new_on_page = 0
+        for agency in agencies:
+            # Use agency name and primary phone as unique identifier
+            unique_id = (agency.agency_name or "").lower()
+            if agency.phones:
+                unique_id += "_" + agency.phones[0]
 
-        detail_email = details["email"]
-        if detail_email != "-" and (not rec.email or rec.email == "-"):
-            rec.email = detail_email
-        elif not rec.email:
-            rec.email = "-"
+            if unique_id not in seen_agencies:
+                all_agencies.append(agency)
+                seen_agencies.add(unique_id)
+                new_on_page += 1
 
-        logger.debug(
-            "  %s → contact=%r  email=%r",
-            rec.agency_name,
-            rec.contact_name,
-            rec.email,
+        logger.info(
+            "Found %d new agencies on page %d (total so far: %d)",
+            new_on_page,
+            page_num,
+            len(all_agencies),
         )
 
-    logger.info("Total agencies fully enriched: %d", len(all_agencies))
+        soup = BeautifulSoup(resp.text, "html.parser")
+        if not _has_next_page(soup):
+            logger.info("No more agency pages detected, stopping early.")
+            break
+
     return all_agencies
 
 
-def _parse_agency_page(html: str) -> list[AgencyRecord]:
-
+def _parse_agency_page(html: str, base_url: str) -> list[AgencyRecord]:
     soup = BeautifulSoup(html, "html.parser")
-    records: list[AgencyRecord] = []
+    agencies: list[AgencyRecord] = []
 
-    # Current imoti.bg structure: div.agency_info inside div.agency_list
-    containers = soup.select("div.agency_info")
+    # Find agency containers - typically in grid or list format
+    for container in soup.select("article.product-classic, .agency-item, .agency-card"):
+        agency = _parse_agency_container(container, base_url)
+        if agency:
+            agencies.append(agency)
 
-    # Fallback to older structure if needed
-    if not containers:
-        containers = soup.select(
-            ".agency-item, .agency-list-item, article.agency, .company-item"
-        )
-
-    if not containers:
-        # Last fallback: look for any block that contains an agency name
-        containers = [
-            el.parent
-            for el in soup.select("h3.agency-name, a.agency-name, h2.agency-name")
-            if el.parent
-        ]
-
-    for container in containers:
-        try:
-            record = _parse_agency_container(container)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Skipping malformed agency container: %s", exc)
-            continue
-        if record is not None:
-            records.append(record)
-
-    return records
+    return agencies
 
 
-# ── City parsing helper ─────────────────────────────────────────────────────
-BULGARIAN_CITIES = [
-    "София",
-    "Пловдив",
-    "Варна",
-    "Бургас",
-    "Русе",
-    "Стара Загора",
-    "Плевен",
-    "Добрич",
-    "Сливен",
-    "Шумен",
-    "Перник",
-    "Хасково",
-    "Казанлък",
-    "Кюстендил",
-    "Монтана",
-    "Велико Търново",
-    "Асеновград",
-    "Видин",
-    "Враца",
-    "Габрово",
-    "Димитровград",
-    "Ловеч",
-    "Силистра",
-]
-
-
-def _parse_agency_container(container: BeautifulSoup) -> Optional[AgencyRecord]:
-
-    # ── Agency name + detail URL ──────────────────────────────────────────
-    agency_name = ""
-    detail_url = ""
-
-    # Try selectors from most specific to most generic.
-    for name_sel in (
-        "h3.agency-name a",
-        "a.agency-name",
-        "h3.agency-name",
-        "h2.agency-name",
-        "h3 a",
-        "h2 a",
-        "h3",
-    ):
-        el = container.select_one(name_sel)
-        if el:
-            agency_name = el.get_text(strip=True)
-            if agency_name:
-                # If the matched element is an <a>, grab its href as detail URL.
-                if el.name == "a":
-                    raw_href = el.get("href", "").strip()
-                    if raw_href:
-                        detail_url = (
-                            raw_href
-                            if raw_href.startswith("http")
-                            else urljoin("https://imoti.bg/", raw_href)
-                        )
+def _parse_agency_container(container: BeautifulSoup, base_url: str) -> Optional[AgencyRecord]:
+    try:
+        # Agency name
+        name_selector = (".agency-name", ".product-classic-title a", "h3", "[class*='title']")
+        agency_name = ""
+        for sel in name_selector:
+            el = container.select_one(sel)
+            if el:
+                agency_name = el.get_text(strip=True)
                 break
 
-    if not agency_name:
+        if not agency_name:
+            return None
+
+        # Agency detail URL
+        detail_url = ""
+        link_el = container.select_one("a[href]")
+        if link_el:
+            href = link_el.get("href", "")
+            detail_url = href if href.startswith("http") else urljoin(base_url, href)
+
+        # Extract contact information
+        agency_data = parse_agency_details(detail_url) if detail_url else {}
+
+        # Fallback to extracting from container if no detail page was fetched
+        if not agency_data.get("phones"):
+            # Extract phones from the listing container
+            phones = []
+            phone_elements = container.select("[class*='phone'], [class*='tel'], .contact-info")
+            for el in phone_elements:
+                phone_text = el.get_text(strip=True)
+                extracted_phones = extract_phone_numbers(phone_text)
+                phones.extend(extracted_phones)
+            agency_data["phones"] = list(set(phones))  # Remove duplicates
+
+        if not agency_data.get("contact_name"):
+            # Extract names from the container
+            text_content = container.get_text(" ", strip=True)
+            names = extract_names(text_content)
+            if names:
+                agency_data["contact_name"] = names[0]
+
+        if not agency_data.get("email"):
+            # Extract emails from the container
+            text_content = container.get_text(" ", strip=True)
+            emails = extract_email(text_content)
+            if emails:
+                agency_data["email"] = emails[0]
+
+        # City - might be in .btext or similar location indicator
+        city_el = container.select_one(".btext, .location, .city")
+        city = city_el.get_text(strip=True) if city_el else ""
+
+        return AgencyRecord(
+            agency_name=agency_name,
+            phones=agency_data.get("phones", []),
+            city=city,
+            email=agency_data.get("email", ""),
+            contact_name=agency_data.get("contact_name", ""),
+            detail_url=detail_url,
+        )
+    except Exception as e:
+        logger.debug("Error parsing agency container: %s", e)
         return None
-
-    # ── Phone numbers ─────────────────────────────────────────────────────
-    phones: list[str] = []
-
-    # 1. Elements with phone-related class / selector
-    for phone_sel in (
-        "span.phone",
-        ".phone",
-        ".phones",
-        "[class*='phone']",
-        "[class*='tel']",
-    ):
-        for phone_el in container.select(phone_sel):
-            raw = phone_el.get_text(strip=True)
-            normalised = normalise_phone(raw)
-            if normalised and len(normalised) >= 9:
-                phones.append(normalised)
-
-    # 2. <a href="tel:..."> links
-    for tel_link in container.select('a[href^="tel:"]'):
-        raw = tel_link.get("href", "").replace("tel:", "")
-        normalised = normalise_phone(raw)
-        if normalised and len(normalised) >= 9:
-            phones.append(normalised)
-
-    # 3. Regex scan over full container text as last resort
-    if not phones:
-        full_text = container.get_text(" ", strip=True)
-        for match in _PHONE_TEXT_RE.finditer(full_text):
-            normalised = normalise_phone(match.group(0))
-            if normalised and len(normalised) >= 9:
-                phones.append(normalised)
-
-    # Deduplicate while preserving order.
-    seen_p: set[str] = set()
-    unique_phones: list[str] = []
-    for p in phones:
-        if p not in seen_p:
-            seen_p.add(p)
-            unique_phones.append(p)
-
-    # ── Email (quick pass from list page) ─────────────────────────────────
-    # A richer email will be sought on the profile page by parse_agency_details().
-    email = ""
-    mailto = container.select_one('a[href^="mailto:"]')
-    if mailto:
-        email = mailto.get("href", "").replace("mailto:", "").strip()
-    else:
-        _email_re = re.compile(r"[\w.\-+]+@[\w.\-]+\.[a-z]{2,}", re.IGNORECASE)
-        full_text = container.get_text(" ", strip=True)
-        em_match = _email_re.search(full_text)
-        if em_match:
-            email = em_match.group(0)
-
-    return AgencyRecord(
-        agency_name=agency_name,
-        phones=unique_phones,
-        email=email,
-        detail_url=detail_url,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Agency profile-page parser  (parse_agency_details)
-# ---------------------------------------------------------------------------
 
 
 def parse_agency_details(
-    url: str,
-    session: requests.Session,
-    config: Config,
-) -> dict[str, str]:
+    detail_url: str, session: requests.Session, config: Config
+) -> dict[str, Any]:
+    """
+    Parse agency detail page to extract comprehensive contact information.
+    """
+    if not detail_url:
+        return {}
 
-    # ── Fetch with the shared polite delay ────────────────────────────────
-    # Use a slightly longer minimum delay for detail pages to be extra polite.
-    resp = _polite_get(
-        session=session,
-        url=url,
-        config=config,
-        retries=2,
-        backoff=3.0,
-    )
+    # Use _polite_get to respect delays and handle retries
+    resp = _polite_get(session, detail_url, config)
+    if not resp:
+        logger.debug("Could not fetch agency detail page %s", detail_url)
+        return {}
 
-    if resp is None:
-        logger.warning("parse_agency_details: could not fetch %s", url)
-        return {"contact_name": "-", "email": "-"}
-
-    # Ensure correct encoding — imoti.bg serves UTF-8 but requests sometimes
-    # mis-detects it.  Force UTF-8 then fall back to apparent encoding.
     try:
-        html = resp.content.decode("utf-8")
-    except UnicodeDecodeError:
-        html = resp.content.decode(resp.apparent_encoding, errors="replace")
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-    soup = BeautifulSoup(html, "html.parser")
+        result = {
+            "phones": [],
+            "contact_name": "",
+            "email": "",
+        }
 
-    contact_name = _extract_contact_name(soup)
-    email = _extract_email(soup)
+        # Extract phone numbers from the detail page
+        text_content = soup.get_text(" ", strip=True)
+        result["phones"] = extract_phone_numbers(text_content)
 
-    return {
-        "contact_name": contact_name or "-",
-        "email": email or "-",
-    }
+        # Extract contact name from detail page
+        names = extract_names(text_content)
+        if names:
+            result["contact_name"] = names[0]
+
+        # Extract email from detail page
+        emails = extract_email(text_content)
+        if emails:
+            result["email"] = emails[0]
+
+        return result
+    except Exception as e:
+        logger.debug("Error parsing agency detail page %s: %s", detail_url, e)
+        return {}
 
 
 def _extract_contact_name(soup: BeautifulSoup) -> str:
-
-    # ── Pattern 1: dedicated CSS selectors ───────────────────────────────
-    for sel in (
-        ".contact-name",
-        ".agent-name",
-        ".block-agent-contact .name",
-        ".block-agent .agent-name",
-        "[class*='contact-name']",
-        "[class*='agent-name']",
-        "[class*='contact_name']",
-        # Some sites wrap it in a dt/dd pair
-        "dd.contact-name",
-        "span.name",
-    ):
-        el = soup.select_one(sel)
-        if el:
-            name = el.get_text(strip=True)
-            if name and len(name) >= 2:
-                return name
-
-    # ── Pattern 2: labelled text ("Лице за контакти: Иван Петров") ────────
-
-    label_patterns = (
-        "лице за контакти",
-        "контактно лице",
-        "контакт",
-        "мениджър",
-        "брокер",
-        "agent",
-        "отговорник",
-    )
-    for label_tag in soup.find_all(["strong", "b", "span", "label", "dt"]):
-        tag_text = label_tag.get_text(strip=True).lower()
-        if any(pat in tag_text for pat in label_patterns):
-            # Try next sibling text node
-            sibling = label_tag.next_sibling
-            if sibling:
-                candidate = (
-                    sibling.strip()
-                    if isinstance(sibling, str)
-                    else sibling.get_text(strip=True)
-                )
-                if candidate and len(candidate) >= 2:
-                    return candidate
-            # Try parent element text (strip the label itself)
-            parent_text = (
-                label_tag.parent.get_text(strip=True) if label_tag.parent else ""
-            )
-            label_text = label_tag.get_text(strip=True)
-            candidate = parent_text.replace(label_text, "").strip(" :–-")
-            if candidate and len(candidate) >= 2:
-                return candidate
-
-    # ── Pattern 3: generic broker/agent containers ────────────────────────
-    for sel in (
-        ".block-broker",
-        ".broker-info",
-        ".agent-info",
-        ".contact-person",
-        "[class*='broker']",
-        "[class*='agent']",
-    ):
-        el = soup.select_one(sel)
-        if el:
-            # Take only the first line or the first <p>/<span> inside it
-            inner = el.select_one("p, span, strong")
-            if inner:
-                name = inner.get_text(strip=True)
-                if name and len(name) >= 2:
-                    return name
-
-    return ""
+    """
+    Extract contact name from soup with improved logic from utils.
+    """
+    text_content = soup.get_text(" ", strip=True)
+    names = extract_names(text_content)
+    return names[0] if names else ""
 
 
 def _extract_email(soup: BeautifulSoup) -> str:
-
-    # ── Pattern 1: mailto link ────────────────────────────────────────────
-    mailto = soup.select_one('a[href^="mailto:"]')
-    if mailto:
-        email = mailto.get("href", "").replace("mailto:", "").strip()
-        # Strip any query string (e.g. ?subject=...)
-        email = email.split("?")[0].strip()
-        if email:
-            return email
-
-    # ── Pattern 2: dedicated CSS selectors ───────────────────────────────
-    for sel in (
-        ".email",
-        "[class*='email']",
-        ".contact-email",
-        "span.mail",
-        "a.email",
-    ):
-        el = soup.select_one(sel)
-        if el:
-            # Could be a text node or an href
-            text = el.get_text(strip=True)
-            if _EMAIL_RE.match(text):
-                return text
-
-    # ── Pattern 3: regex scan over visible text ───────────────────────────
-
-    for content_sel in (
-        "main",
-        "#main",
-        ".main-content",
-        ".content",
-        ".agency-profile",
-        ".block-agent",
-        "article",
-        "body",  # last resort
-    ):
-        container = soup.select_one(content_sel)
-        if container:
-            text = container.get_text(" ", strip=True)
-            match = _EMAIL_RE.search(text)
-            if match:
-                return match.group(0)
-
-    return ""
+    """
+    Extract email from soup with improved logic from utils.
+    """
+    text_content = soup.get_text(" ", strip=True)
+    emails = extract_email(text_content)
+    return emails[0] if emails else ""
 
 
 # ---------------------------------------------------------------------------
@@ -1352,9 +1086,9 @@ def _print_summary(listings: list[Listing], today: str) -> None:
 
     for idx, lst in enumerate(listings, start=1):
         type_style = (
-            "[green]приватний[/green]"
-            if "приватний" in lst.ad_type
-            else "[orange1]від агенції[/orange1]"
+            "[green]частно лице[/green]"
+            if "частно лице" in lst.ad_type
+            else "[orange1]от агенция[/orange1]"
         )
         table.add_row(
             str(idx),
@@ -1398,39 +1132,10 @@ def _print_agencies_summary(agencies: list[AgencyRecord]) -> None:
     console.print(table)
 
 
-def export_agencies_to_csv(
-    agencies: list[AgencyRecord],
-    csv_path: str | Path,
-) -> None:
-
-    if not agencies:
-        logger.warning("No agencies to export to CSV.")
-        return
-
-    # Convert agency records to list of dicts
-    data = []
-    for rec in agencies:
-        # For each agency, create a row with the first phone (if any)
-        # and the city
-        phone = rec.phones[0] if rec.phones else ""
-        data.append(
-            {
-                "Agency Name": rec.agency_name,
-                "Phone Number": phone,
-                "City": rec.city,
-            }
-        )
-
-    # Create DataFrame with the specified columns
-    df = pd.DataFrame(data, columns=["Agency Name", "Phone Number", "City"])
-
-    # Ensure the parent directory exists
-    Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
-
-    # Write to CSV with UTF-8 encoding (Bulgarian characters)
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    logger.info("Exported %d agencies to CSV: %s", len(agencies), csv_path)
+def export_agencies_to_csv(agencies: list[AgencyRecord], path: Path) -> None:
+    df = pd.DataFrame([agency.to_dict() for agency in agencies])
+    df.to_csv(path, index=False, encoding="utf-8")
+    logger.info("Exported %d agencies to %s", len(agencies), path)
 
 
 def _is_missing_contact(value: str) -> bool:
@@ -1461,10 +1166,8 @@ def backfill_new_ads_contacts(
             updates.append(
                 {
                     "row_number": row["row_number"],
-                    "contact_name": row.get("contact_name", "").strip()
-                    or CONTACT_SENTINEL,
-                    "contact_email": row.get("contact_email", "").strip()
-                    or CONTACT_SENTINEL,
+                    "contact_name": row.get("contact_name", "").strip() or CONTACT_SENTINEL,
+                    "contact_email": row.get("contact_email", "").strip() or CONTACT_SENTINEL,
                 }
             )
             continue
@@ -1503,70 +1206,68 @@ def backfill_new_ads_contacts(
 
 
 # ---------------------------------------------------------------------------
-# CLI argument parsing
+# Command-line interface
 # ---------------------------------------------------------------------------
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Daily apartment-rental scraper for imoti.bg",
+        description="Scrape imoti.bg rental listings and upload to Google Sheets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python scraper.py                          # normal daily run
-  python scraper.py --force                  # re-check all ads (ignore Processed_IDs)
-  python scraper.py --dry-run                # scrape but don't write to Sheets or send email
-  python scraper.py --force --dry-run        # combine: re-check everything, preview only
-  python scraper.py --update-agencies        # scrape agency directory, update Agencies sheet
-  python scraper.py --update-agencies --dry-run  # preview agency update without saving
-  python scraper.py --backfill-contacts      # fill Contact_Name/Contact_Email in existing New_Ads
-  python scraper.py --backfill-contacts --dry-run  # preview backfill without writing
-        """,
+ Examples:
+  python scraper.py --dry-run          # Test run without saving
+  python scraper.py --update-agencies  # Update agency contacts
+  python scraper.py --backfill         # Backfill missing contacts
+  python scraper.py --force            # Re-process all ads
+        """.strip(),
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't save to Google Sheets or send email",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        default=False,
-        help="Re-process all ads, even those already in Processed_IDs.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        dest="dry_run",
-        help="Scrape and log results but do NOT write to Sheets or send email.",
+        help="Re-process all ads even if already in Processed_IDs",
     )
     parser.add_argument(
         "--update-agencies",
         action="store_true",
-        default=False,
-        dest="update_agencies",
-        help=(
-            "Scrape https://imoti.bg/агенції (agency directory) and upsert "
-            "the results into the Agencies sheet.  Can be combined with "
-            "--dry-run to preview without saving."
-        ),
+        help="Scrape agencies and update the Agencies sheet",
     )
     parser.add_argument(
-        "--backfill-contacts",
+        "--backfill",
         action="store_true",
-        default=False,
         dest="backfill_contacts",
-        help=(
-            "Backfill Contact_Name and Contact_Email for existing New_Ads rows "
-            "that are empty or '-'. Updates only these two columns."
-        ),
+        help="Enrich existing New_Ads rows with Contact_Name/Contact_Email",
     )
+    parser.add_argument(
+        "--city-filter",
+        type=str,
+        help="Only process listings from this city (case-insensitive)",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=30,
+        help="Max number of listing pages to scrape (default: 30)",
+    )
+    parser.add_argument(
+        "--max-agency-pages",
+        type=int,
+        default=15,
+        help="Max number of agency pages to scrape (default: 15)",
+    )
+
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
-
 def run_parser_once(config: Config) -> ParserRunResult:
-    today = date.today().isoformat()
+    """Execute one complete run of the parser."""
+    today = date.today().strftime("%Y-%m-%d")
     logger.info(
         "=== imoti.bg rental scraper — %s (force=%s, dry_run=%s, update_agencies=%s, backfill_contacts=%s) ===",
         today,
@@ -1613,7 +1314,9 @@ def run_parser_once(config: Config) -> ParserRunResult:
             agency_records = scrape_agencies(session, config)
         except Exception as exc:  # noqa: BLE001
             logger.error("Error scraping agencies: %s", exc, exc_info=True)
-            return ParserRunResult(exit_code=1, today=today, message=f"Error scraping agencies: {exc}")
+            return ParserRunResult(
+                exit_code=1, today=today, message=f"Error scraping agencies: {exc}"
+            )
 
         if agency_records:
             _print_agencies_summary(agency_records)
@@ -1630,7 +1333,9 @@ def run_parser_once(config: Config) -> ParserRunResult:
                 sheets.upsert_agencies(agency_dicts)
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to upsert agencies: %s", exc, exc_info=True)
-                return ParserRunResult(exit_code=1, today=today, message=f"Failed to upsert agencies: {exc}")
+                return ParserRunResult(
+                    exit_code=1, today=today, message=f"Failed to upsert agencies: {exc}"
+                )
             if mysql_store is not None:
                 if config.dry_run:
                     logger.info(
@@ -1652,9 +1357,7 @@ def run_parser_once(config: Config) -> ParserRunResult:
                             message=f"Failed to upsert agencies into MySQL: {exc}",
                         )
         else:
-            logger.warning(
-                "No agency records were scraped from the agencies directory."
-            )
+            logger.warning("No agency records were scraped from the agencies directory.")
 
         # If the user only wanted to update agencies (no rental scraping), stop here.
         # If they also want the normal scrape, fall through.
@@ -1710,22 +1413,24 @@ def run_parser_once(config: Config) -> ParserRunResult:
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("Backfill contacts failed: %s", exc, exc_info=True)
-            return ParserRunResult(exit_code=1, today=today, message=f"Backfill contacts failed: {exc}")
+            return ParserRunResult(
+                exit_code=1, today=today, message=f"Backfill contacts failed: {exc}"
+            )
         logger.info("Backfill contacts complete. Rows updated: %d", updated)
         if mysql_store is not None and not config.dry_run:
             try:
                 rows_for_sync = sheets.load_new_ads_for_backfill()
                 mysql_store.upsert_from_new_ads_sheet_rows(rows_for_sync)
             except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Failed to sync backfilled New_Ads to MySQL: %s", exc, exc_info=True
-                )
+                logger.error("Failed to sync backfilled New_Ads to MySQL: %s", exc, exc_info=True)
                 return ParserRunResult(
                     exit_code=1,
                     today=today,
                     message=f"Failed to sync backfilled New_Ads to MySQL: {exc}",
                 )
-        return ParserRunResult(exit_code=0, today=today, message=f"Backfill complete. Updated rows: {updated}")
+        return ParserRunResult(
+            exit_code=0, today=today, message=f"Backfill complete. Updated rows: {updated}"
+        )
 
     # ── Load already-processed IDs ────────────────────────────────────────
     try:
@@ -1733,15 +1438,15 @@ def run_parser_once(config: Config) -> ParserRunResult:
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to load processed ids from Google Sheets: %s", exc)
         return ParserRunResult(
-            exit_code=1, today=today, message=f"Failed to load processed ids from Google Sheets: {exc}"
+            exit_code=1,
+            today=today,
+            message=f"Failed to load processed ids from Google Sheets: {exc}",
         )
     if mysql_store is not None:
         try:
             processed_ids |= mysql_store.load_processed_ids()
         except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "Failed to load processed ids from MySQL: %s", exc, exc_info=True
-            )
+            logger.error("Failed to load processed ids from MySQL: %s", exc, exc_info=True)
             return ParserRunResult(
                 exit_code=1, today=today, message=f"Failed to load processed ids from MySQL: {exc}"
             )
@@ -1781,9 +1486,9 @@ def run_parser_once(config: Config) -> ParserRunResult:
     # ── Enrich new listings ────────────────────────────────────────────────
 
     logger.info("Enriching %d new listing(s) concurrently …", len(new_listings))
-    
+
     enrich_lock = threading.Lock()
-    
+
     def _enrich_single(idx: int, lst: Listing) -> None:
         with enrich_lock:
             logger.info(
@@ -1803,17 +1508,18 @@ def run_parser_once(config: Config) -> ParserRunResult:
         except Exception as exc:  # noqa: BLE001
             with enrich_lock:
                 logger.warning("Could not enrich ad %s: %s", lst.ad_id, exc)
-            lst.ad_type = "невідомо"
+            lst.ad_type = "unknown"
 
         # Send Telegram notification if it's a private lead
-        if "приватний" in lst.ad_type:
+        if "частно лице" in lst.ad_type:
             from telegram_notifier import send_telegram_lead
+
             send_telegram_lead(config, lst)
 
     # Use max_workers=5 to speed it up while avoiding aggressive rate-limiting
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {
-            executor.submit(_enrich_single, i, lst): lst 
+            executor.submit(_enrich_single, i, lst): lst
             for i, lst in enumerate(new_listings, start=1)
         }
         for future in concurrent.futures.as_completed(futures):
@@ -1830,7 +1536,7 @@ def run_parser_once(config: Config) -> ParserRunResult:
 
     if not config.dry_run:
         try:
-            sheets.append_new_ads(new_rows)
+            sheets.append_new_ads(new_listings)
             sheets.mark_processed(new_ids)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to write to Google Sheets: %s", exc, exc_info=True)
@@ -1892,18 +1598,46 @@ def run_parser_once(config: Config) -> ParserRunResult:
 
 def main() -> int:
     _ensure_utf8_stdio()
+
     args = _parse_args()
 
-    # ── Load configuration ────────────────────────────────────────────────
+    # Load config and apply CLI overrides
     config = load_config()
     config.force = args.force
     config.dry_run = args.dry_run
     config.update_agencies = args.update_agencies
     config.backfill_contacts = args.backfill_contacts
+    if hasattr(args, "city_filter") and args.city_filter:
+        config.city_filter = args.city_filter
+    if hasattr(args, "max_pages") and args.max_pages:
+        config.max_pages = args.max_pages
+    if hasattr(args, "max_agency_pages") and args.max_agency_pages:
+        config.max_agency_pages = args.max_agency_pages
 
     _setup_logging(config)
-    result = run_parser_once(config)
-    return result.exit_code
+    logger.info("Parser started with config: dry_run=%s, force=%s", config.dry_run, config.force)
+
+    try:
+        if config.backfill_contacts:
+            session = _make_session(config)
+            sheets = SheetsClient(config)
+
+            if not config.dry_run:
+                sheets.connect()
+
+            updated = backfill_new_ads_contacts(sheets, config, session)
+            logger.info(f"Backfill completed: updated {updated} listings")
+            return 0
+
+        result = run_parser_once(config)
+        logger.info("Parser run completed successfully")
+        return result.exit_code
+    except KeyboardInterrupt:
+        logger.info("Parser interrupted by user")
+        return 130  # Standard exit code for Ctrl+C
+    except Exception as e:
+        logger.error(f"Parser failed with error: {e}", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":

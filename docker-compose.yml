@@ -11,7 +11,11 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    # Убрали healthcheck, чтобы он не блокировал запуск всей системы
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -21,21 +25,29 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 20s
+      retries: 10
+      start_period: 10s
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command:
+      ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     env_file:
       - .env
     environment:
       MYSQL_HOST: mysql
       REDIS_HOST: redis
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8000:8000"
 
@@ -51,8 +63,37 @@ services:
       MYSQL_HOST: mysql
       REDIS_HOST: redis
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: |
+        bash -c '
+        if [ "$(redis-cli -h redis get scrape:worker_status)" = "running" ]; then
+          # Проверяем, что статус рабочего актуален (проверяем по времени последнего выполнения)
+          LAST_EXEC_TIME=$(redis-cli -h redis get scrape:last_execution_time)
+          if [ -n "$$LAST_EXEC_TIME" ]; then
+            LAST_EXEC_EPOCH=$$(date -d "$$LAST_EXEC_TIME" +%s 2>/dev/null || echo 0)
+            CURRENT_EPOCH=$$(date +%s)
+            TIME_DIFF=$$((CURRENT_EPOCH - LAST_EXEC_EPOCH))
+            # Если прошло менее 20 минут с последнего выполнения (15 мин + допуск), считаем OK
+            if [ $$TIME_DIFF -lt 1200 ]; then
+              exit 0
+            else
+              exit 1
+            fi
+          else
+            exit 1
+          fi
+        else
+          exit 1
+        fi
+        '
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   streamlit_ui:
     build:
@@ -65,7 +106,7 @@ services:
         "run",
         "app/ui/streamlit_app.py",
         "--server.address=0.0.0.0",
-        "--server.port=8501"
+        "--server.port=8501",
       ]
     env_file:
       - .env
@@ -73,9 +114,12 @@ services:
       MYSQL_HOST: mysql
       REDIS_HOST: redis
     depends_on:
-      - mysql
-      - redis
-      - api
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
     ports:
       - "8501:8501"
 
