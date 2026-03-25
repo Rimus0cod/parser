@@ -1,4 +1,12 @@
 .env
-.gooogle.jsongoogle.json
 google.json
 parser.log
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+mysql_data/
+redis_data/
+poetry.lock

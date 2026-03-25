@@ -977,3 +977,18 @@
 2026-03-24 16:47:25,904 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8594733150:AAHuOvOquA4gGmCBihRxojPi0bAxTyiUsGA/getUpdates "HTTP/1.1 200 OK"
 2026-03-24 16:47:25,907 INFO     telegram.ext.Application — Application is stopping. This might take a moment.
 2026-03-24 16:47:25,908 INFO     telegram.ext.Application — Application.stop() complete
+2026-03-25 08:38:19,554 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/getMe "HTTP/1.1 200 OK"
+2026-03-25 08:38:19,557 INFO     imoti_scraper — === imoti.bg rental scraper — 2026-03-25 (force=False, dry_run=False, update_agencies=False, backfill_contacts=False) ===
+2026-03-25 08:38:19,559 INFO     sheets — Authenticating with Google Sheets API …
+2026-03-25 08:38:19,594 INFO     sheets — Opening spreadsheet ID '1IHlQUDODPGJnDwC9Qz1MYPMo2fryHE5W0BK9svy9c6U' …
+2026-03-25 08:38:24,368 INFO     sheets — Google Sheets connection established.
+2026-03-25 08:38:28,052 ERROR    imoti_scraper — Failed to connect to MySQL: 2003: Can't connect to MySQL server on 'mysql:3306' (Errno -2: Name or service not known)
+2026-03-25 08:38:28,257 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/sendMessage "HTTP/1.1 200 OK"
+2026-03-25 08:38:28,311 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/deleteWebhook "HTTP/1.1 200 OK"
+2026-03-25 08:38:28,312 INFO     telegram.ext.Application — Application started
+2026-03-25 08:38:38,465 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/getUpdates "HTTP/1.1 200 OK"
+2026-03-25 08:38:48,516 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/getUpdates "HTTP/1.1 200 OK"
+2026-03-25 08:38:58,566 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/getUpdates "HTTP/1.1 200 OK"
+2026-03-25 08:39:07,005 INFO     httpx — HTTP Request: POST https://api.telegram.org/bot8603823914:AAECgbMGBFuQftnwzpUsCiSY8SD8Es3Zoyg/getUpdates "HTTP/1.1 200 OK"
+2026-03-25 08:39:07,007 INFO     telegram.ext.Application — Application is stopping. This might take a moment.
+2026-03-25 08:39:07,007 INFO     telegram.ext.Application — Application.stop() complete
