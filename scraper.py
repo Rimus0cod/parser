@@ -1278,7 +1278,19 @@ def run_parser_once(config: Config) -> ParserRunResult:
     )
 
     # ── Connect to Google Sheets ──────────────────────────────────────────
-    sheets = SheetsClient(config)
+    sheets = SheetsClient(
+        sheet_id=config.google_sheet_id,
+        service_account_file=config.service_account_json,
+        sheet_name=config.sheet_name,
+        ws_new_ads=config.ws_new_ads,
+        ws_agencies=config.ws_agencies,
+        ws_processed=config.ws_processed,
+        ws_renters=config.ws_renters,
+        new_ads_headers=config.new_ads_headers,
+        agencies_headers=config.agencies_headers,
+        renters_headers=config.renters_headers,
+    )
+
     try:
         sheets.connect()
     except FileNotFoundError as exc:
@@ -1297,7 +1309,6 @@ def run_parser_once(config: Config) -> ParserRunResult:
     if config.mysql_enabled:
         try:
             mysql_store = MySQLStore(config)
-            mysql_store.connect()
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to connect to MySQL: %s", exc)
             return ParserRunResult(
@@ -1550,7 +1561,7 @@ def run_parser_once(config: Config) -> ParserRunResult:
                     row = lst.as_dict()
                     row["Date"] = today
                     mysql_rows.append(row)
-                mysql_store.upsert_listings(mysql_rows)
+                    mysql_store.store_listings(mysql_rows)
                 mysql_store.mark_processed(new_ids)
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to write data to MySQL: %s", exc, exc_info=True)

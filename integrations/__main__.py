@@ -3,11 +3,10 @@
 import asyncio
 import logging
 
-from app.integrations.amocrm import AmoCrmIntegration
-from app.integrations.bitrix24 import Bitrix24Integration
-from app.integrations.webhooks import WebhookIntegration
-
 from app.core.config import get_settings
+from integrations.amocrm import AmoCrmIntegration
+from integrations.bitrix24 import Bitrix24Integration
+from integrations.webhooks import WebhookIntegration
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

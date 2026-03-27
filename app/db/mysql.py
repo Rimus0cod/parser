@@ -5,83 +5,113 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import aiomysql
+from pymysql.err import OperationalError
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+MYSQL_DUPLICATE_KEY_ERROR = 1061
+MYSQL_DUPLICATE_COLUMN_ERROR = 1060
+
+
+def _effective_mysql_password() -> str:
+    settings = get_settings()
+    if settings.mysql_user == "root" and settings.mysql_root_password:
+        if settings.mysql_password and settings.mysql_password != settings.mysql_root_password:
+            logger.warning(
+                "MYSQL_USER is root; using MYSQL_ROOT_PASSWORD for the connection. "
+                "For production, switch to a dedicated non-root DB user."
+            )
+        return settings.mysql_root_password
+    return settings.mysql_password
 
 
 @asynccontextmanager
 async def mysql_pool() -> AsyncIterator[aiomysql.Pool]:
     settings = get_settings()
-    try:
-        pool = await aiomysql.create_pool(
-            host=settings.mysql_host,
-            port=settings.mysql_port,
-            user=settings.mysql_user,
-            password=settings.mysql_password,
-            db=settings.mysql_database,
-            autocommit=True,
-            minsize=1,
-            maxsize=10,
-            connect_timeout=10,
-            echo=False,
-        )
-    except Exception as e:
-        logger.error(f"Failed to create MySQL pool: {e}")
-        raise
-
+    pool = await aiomysql.create_pool(
+        host=settings.mysql_host,
+        port=settings.mysql_port,
+        user=settings.mysql_user,
+        password=_effective_mysql_password(),
+        db=settings.mysql_database,
+        autocommit=True,
+        minsize=1,
+        maxsize=10,
+        connect_timeout=10,
+        charset="utf8mb4",
+    )
     try:
         yield pool
-    except Exception as e:
-        logger.error(f"MySQL pool error: {e}")
-        raise
     finally:
         pool.close()
         await pool.wait_closed()
 
 
 async def init_schema() -> None:
-    try:
-        async with mysql_pool() as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    # Create listings table
-                    await cur.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS listings (
-                            ad_id VARCHAR(50) PRIMARY KEY,
-                            date_seen DATE NOT NULL,
-                            title TEXT,
-                            price VARCHAR(100),
-                            location VARCHAR(255),
-                            size VARCHAR(50),
-                            link TEXT,
-                            phone VARCHAR(50),
-                            seller_name VARCHAR(255),
-                            ad_type VARCHAR(50),
-                            contact_name VARCHAR(255),
-                            contact_email VARCHAR(255),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                        """
-                    )
-                    # Create agencies table
-                    await cur.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS agencies (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            agency_name VARCHAR(255) NOT NULL,
-                            phones TEXT,
-                            city VARCHAR(100),
-                            email VARCHAR(255),
-                            contact_name VARCHAR(255),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                        """
-                    )
-    except Exception as e:
-        logger.error(f"Failed to initialize schema: {e}")
-        raise
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS listings (
+                        ad_id VARCHAR(50) PRIMARY KEY,
+                        date_seen DATE NOT NULL,
+                        title TEXT,
+                        price VARCHAR(100),
+                        location VARCHAR(255),
+                        size VARCHAR(50),
+                        link TEXT,
+                        source_site VARCHAR(120) NOT NULL DEFAULT '',
+                        phone VARCHAR(50),
+                        seller_name VARCHAR(255),
+                        ad_type VARCHAR(50),
+                        contact_name VARCHAR(255),
+                        contact_email VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+                await cur.execute("SHOW COLUMNS FROM listings LIKE 'source_site'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute(
+                            """
+                            ALTER TABLE listings
+                            ADD COLUMN source_site VARCHAR(120) NOT NULL DEFAULT '' AFTER link
+                            """
+                        )
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
+                            raise
+
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS agencies (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        agency_name VARCHAR(255) NOT NULL,
+                        phones TEXT,
+                        city VARCHAR(100),
+                        email VARCHAR(255),
+                        contact_name VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_date_seen'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute("CREATE INDEX idx_listings_date_seen ON listings (date_seen)")
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
+                            raise
+
+                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_source_site'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute("CREATE INDEX idx_listings_source_site ON listings (source_site)")
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
+                            raise

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+import logging
+from datetime import date, timedelta
 from typing import Any
 
 from app.db.mysql import mysql_pool
 from app.services.async_scraper import ScrapedListing, to_listing_rows
+
+logger = logging.getLogger(__name__)
 
 
 async def upsert_leads(rows: list[ScrapedListing]) -> int:
@@ -13,9 +16,9 @@ async def upsert_leads(rows: list[ScrapedListing]) -> int:
 
     sql = """
     INSERT INTO listings (
-        ad_id, date_seen, title, price, location, size, link, phone,
+        ad_id, date_seen, title, price, location, size, link, source_site, phone,
         seller_name, ad_type, contact_name, contact_email
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
         date_seen = VALUES(date_seen),
         title = VALUES(title),
@@ -23,6 +26,7 @@ async def upsert_leads(rows: list[ScrapedListing]) -> int:
         location = VALUES(location),
         size = VALUES(size),
         link = VALUES(link),
+        source_site = VALUES(source_site),
         phone = VALUES(phone),
         seller_name = VALUES(seller_name),
         ad_type = VALUES(ad_type),
@@ -30,135 +34,111 @@ async def upsert_leads(rows: list[ScrapedListing]) -> int:
         contact_email = VALUES(contact_email)
     """
 
-    try:
-        async with mysql_pool() as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.executemany(sql, to_listing_rows(rows))
-        return len(rows)
-    except Exception as e:
-        from logging import getLogger
-
-        logger = getLogger(__name__)
-        logger.error(f"Error upserting leads: {e}")
-        raise
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.executemany(sql, to_listing_rows(rows))
+    return len(rows)
 
 
 async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
-    try:
-        async with mysql_pool() as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
-                        SELECT ad_id, date_seen, title, price, location, size, link, phone,
-                               seller_name, ad_type, contact_name, contact_email, updated_at
-                        FROM listings
-                        ORDER BY date_seen DESC, updated_at DESC
-                        LIMIT %s
-                        """,
-                        (limit,),
-                    )
-                    data = await cur.fetchall()
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT ad_id, date_seen, title, price, location, size, link, source_site,
+                           phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                    FROM listings
+                    ORDER BY date_seen DESC, updated_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
 
-        keys = [
-            "ad_id",
-            "date_seen",
-            "title",
-            "price",
-            "location",
-            "size",
-            "link",
-            "phone",
-            "seller_name",
-            "ad_type",
-            "contact_name",
-            "contact_email",
-            "updated_at",
-        ]
-        return [dict(zip(keys, row, strict=False)) for row in data]
-    except Exception as e:
-        from logging import getLogger
-
-        logger = getLogger(__name__)
-        logger.error(f"Error listing leads: {e}")
-        raise
+    keys = [
+        "ad_id",
+        "date_seen",
+        "title",
+        "price",
+        "location",
+        "size",
+        "link",
+        "source_site",
+        "phone",
+        "seller_name",
+        "ad_type",
+        "contact_name",
+        "contact_email",
+        "updated_at",
+    ]
+    return [dict(zip(keys, row, strict=False)) for row in rows]
 
 
 async def list_agencies(limit: int = 100) -> list[dict[str, Any]]:
-    try:
-        async with mysql_pool() as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
-                        SELECT id, agency_name, phones, city, email, contact_name, updated_at
-                        FROM agencies
-                        ORDER BY agency_name
-                        LIMIT %s
-                        """,
-                        (limit,),
-                    )
-                    data = await cur.fetchall()
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, agency_name, phones, city, email, contact_name, updated_at
+                    FROM agencies
+                    ORDER BY agency_name
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
 
-        keys = ["id", "agency_name", "phones", "city", "email", "contact_name", "updated_at"]
-        return [dict(zip(keys, row, strict=False)) for row in data]
-    except Exception as e:
-        from logging import getLogger
-
-        logger = getLogger(__name__)
-        logger.error(f"Error listing agencies: {e}")
-        raise
+    keys = ["id", "agency_name", "phones", "city", "email", "contact_name", "updated_at"]
+    return [dict(zip(keys, row, strict=False)) for row in rows]
 
 
 async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[str, Any]]:
-    try:
-        start_date = date.today().fromordinal(date.today().toordinal() - max(1, days))
-        async with mysql_pool() as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    if city:
-                        await cur.execute(
-                            """
-                            SELECT ad_id, date_seen, title, price, location, size, link, phone,
-                                   seller_name, ad_type, contact_name, contact_email, updated_at
-                            FROM listings
-                            WHERE date_seen >= %s AND location LIKE %s
-                            ORDER BY date_seen DESC, updated_at DESC
-                            """,
-                            (start_date.isoformat(), f"%{city}%"),
-                        )
-                    else:
-                        await cur.execute(
-                            """
-                            SELECT ad_id, date_seen, title, price, location, size, link, phone,
-                                   seller_name, ad_type, contact_name, contact_email, updated_at
-                            FROM listings
-                            WHERE date_seen >= %s
-                            ORDER BY date_seen DESC, updated_at DESC
-                            """,
-                            (start_date.isoformat(),),
-                        )
-                    data = await cur.fetchall()
-        keys = [
-            "ad_id",
-            "date_seen",
-            "title",
-            "price",
-            "location",
-            "size",
-            "link",
-            "phone",
-            "seller_name",
-            "ad_type",
-            "contact_name",
-            "contact_email",
-            "updated_at",
-        ]
-        return [dict(zip(keys, row, strict=False)) for row in data]
-    except Exception as e:
-        from logging import getLogger
+    start_date = date.today() - timedelta(days=max(1, days))
 
-        logger = getLogger(__name__)
-        logger.error(f"Error listing leads by city and days: {e}")
-        raise
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                if city:
+                    await cur.execute(
+                        """
+                        SELECT ad_id, date_seen, title, price, location, size, link, source_site,
+                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                        FROM listings
+                        WHERE date_seen >= %s AND location LIKE %s
+                        ORDER BY date_seen DESC, updated_at DESC
+                        """,
+                        (start_date.isoformat(), f"%{city}%"),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT ad_id, date_seen, title, price, location, size, link, source_site,
+                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                        FROM listings
+                        WHERE date_seen >= %s
+                        ORDER BY date_seen DESC, updated_at DESC
+                        """,
+                        (start_date.isoformat(),),
+                    )
+                rows = await cur.fetchall()
+
+    keys = [
+        "ad_id",
+        "date_seen",
+        "title",
+        "price",
+        "location",
+        "size",
+        "link",
+        "source_site",
+        "phone",
+        "seller_name",
+        "ad_type",
+        "contact_name",
+        "contact_email",
+        "updated_at",
+    ]
+    return [dict(zip(keys, row, strict=False)) for row in rows]

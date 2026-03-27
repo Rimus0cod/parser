@@ -1,43 +1,53 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: parser_prod-mysql-1
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      # Мы используем только ROOT пароль, это создаст базу с полным доступом
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
-    ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 15s
+      timeout: 5s
       retries: 10
       start_period: 30s
 
   redis:
     image: redis:7-alpine
-    container_name: parser_prod-redis-1
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      timeout: 20s
+      interval: 10s
+      timeout: 5s
       retries: 10
-      start_period: 10s
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    init: true
     restart: unless-stopped
     command:
-      ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      [
+        "uvicorn",
+        "app.api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--proxy-headers",
+      ]
     env_file:
       - .env
     environment:
@@ -50,11 +60,26 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   scraper:
     build:
       context: .
       dockerfile: Dockerfile
+    init: true
     restart: unless-stopped
     command: ["python", "-m", "app.scraper_worker"]
     env_file:
@@ -67,38 +92,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
     healthcheck:
-      test: |
-        bash -c '
-        if [ "$(redis-cli -h redis get scrape:worker_status)" = "running" ]; then
-          # Проверяем, что статус рабочего актуален (проверяем по времени последнего выполнения)
-          LAST_EXEC_TIME=$(redis-cli -h redis get scrape:last_execution_time)
-          if [ -n "$$LAST_EXEC_TIME" ]; then
-            LAST_EXEC_EPOCH=$$(date -d "$$LAST_EXEC_TIME" +%s 2>/dev/null || echo 0)
-            CURRENT_EPOCH=$$(date +%s)
-            TIME_DIFF=$$((CURRENT_EPOCH - LAST_EXEC_EPOCH))
-            # Если прошло менее 20 минут с последнего выполнения (15 мин + допуск), считаем OK
-            if [ $$TIME_DIFF -lt 1200 ]; then
-              exit 0
-            else
-              exit 1
-            fi
-          else
-            exit 1
-          fi
-        else
-          exit 1
-        fi
-        '
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys; from redis import Redis; r=Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379')), db=int(os.getenv('REDIS_DB','0')), decode_responses=True); status=r.get('scrape:worker_status'); sys.exit(0 if status in {'running','idle'} else 1)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 45s
 
   streamlit_ui:
     build:
       context: .
       dockerfile: Dockerfile
+    init: true
     restart: unless-stopped
     command:
       [
@@ -119,9 +132,23 @@ services:
       redis:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8501:8501"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   mysql_data:

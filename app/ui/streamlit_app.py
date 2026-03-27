@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -9,6 +11,12 @@ import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
+
+# Streamlit may execute this file as a standalone script, so keep the repo root
+# on sys.path to preserve absolute imports like `app.core.config`.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.config import get_settings
 from app.services.repository import list_agencies, list_leads

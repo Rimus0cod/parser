@@ -73,14 +73,17 @@ def extract_phone_numbers(text: str) -> List[str]:
 
     phone_patterns = [
         # Pattern for +359 XX XXX XXX or +359-XX-XXX-XXX or +359 XXX XXX XXX
+        r"(\+359(?:[-\s]*[0-9]){8,9})",
         r"(\+359\s*[0-9]{2}\s*[0-9]{3}\s*[0-9]{3})",
         r"(\+359[-\s]*[0-9]{2}[-\s]*[0-9]{3}[-\s]*[0-9]{3})",
         r"(\+359[0-9]{8,9})",
         # Pattern for 0XX XXX XXX or 0XX-XXX-XXX or 0XX XXXXXXX
+        r"(0(?:[-\s]*[0-9]){8,9})",
         r"(0[0-9]{2}\s*[0-9]{3}\s*[0-9]{3})",
         r"(0[0-9]{2}[-\s]*[0-9]{3}[-\s]*[0-9]{3})",
         r"(0[0-9]{8,9})",
         # Pattern for 359 XX XXX XXX
+        r"(359(?:[-\s]*[0-9]){8,9})",
         r"(359\s*[0-9]{2}\s*[0-9]{3}\s*[0-9]{3})",
         r"(359[-\s]*[0-9]{2}[-\s]*[0-9]{3}[-\s]*[0-9]{3})",
         # More flexible pattern that captures anything that looks like a Bulgarian number
@@ -119,7 +122,7 @@ def extract_phone_numbers(text: str) -> List[str]:
         if normalized:
             phones.add(normalized)
 
-    return list(phones)
+    return sorted(phones, key=lambda phone: (-len(phone), phone))
 
 
 def clean_name(name: str) -> str:

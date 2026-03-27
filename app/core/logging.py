@@ -1,57 +1,93 @@
-import logging
-from typing import Any, Dict
+from __future__ import annotations
 
-import sentry_sdk
+import logging
+import sys
+from pathlib import Path
+
 import structlog
-from sentry_sdk.integrations.aiohttp import AioHttpIntegration
-from sentry_sdk.integrations.httpx import HttpxIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
+
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.aiohttp import AioHttpIntegration
+    from sentry_sdk.integrations.httpx import HttpxIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    SENTRY_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency path
+    sentry_sdk = None
+    LoggingIntegration = None
+    AioHttpIntegration = None
+    HttpxIntegration = None
+    SENTRY_AVAILABLE = False
 
 
 def configure_logging(
-    sentry_dsn: str = "", environment: str = "development", debug: bool = False
+    sentry_dsn: str = "",
+    environment: str = "development",
+    debug: bool = False,
+    log_level: str = "INFO",
+    log_format: str = "json",
+    log_to_file: bool = False,
+    log_dir: str = "logs",
+    sentry_traces_sample_rate: float = 0.1,
 ) -> None:
-    """Configure structured logging with optional Sentry integration."""
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    if debug:
+        level = logging.DEBUG
 
-    # Configure structlog
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    renderer: structlog.types.Processor
+    if log_format == "console":
+        renderer = structlog.dev.ConsoleRenderer(colors=True)
+    else:
+        renderer = structlog.processors.JSONRenderer()
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.stdlib.filter_by_level,
-            structlog.processors.time_stamper(fmt="iso"),
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer(),
+        processors=shared_processors
+        + [
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
-        wrapper_class=structlog.stdlib.BoundLogger,
         logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
 
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG if debug else logging.INFO)
-
-    # Clear any existing handlers
-    root_logger.handlers.clear()
-
-    # Add console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(
-        structlog.stdlib.ProcessorFormatter(processor=structlog.dev.ConsoleRenderer(colors=True))
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
     )
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(level)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # Configure Sentry if DSN provided
-    if sentry_dsn:
-        sentry_logging = LoggingIntegration(
-            level=logging.INFO,  # Capture info and above as breadcrumbs
-            event_level=logging.ERROR,  # Send errors as events
-        )
+    if log_to_file:
+        try:
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(log_path / "app.log", encoding="utf-8")
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+        except OSError as exc:
+            root_logger.warning("File logging is disabled because log directory is not writable: %s", exc)
 
+    if sentry_dsn and SENTRY_AVAILABLE:
+        sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
         sentry_sdk.init(
             dsn=sentry_dsn,
             environment=environment,
@@ -60,27 +96,17 @@ def configure_logging(
                 AioHttpIntegration(),
                 HttpxIntegration(),
             ],
-            traces_sample_rate=1.0,
+            traces_sample_rate=sentry_traces_sample_rate,
         )
 
-        # Set up logging to send unhandled exceptions to Sentry
-        def handle_exception(exc_type, exc_value, exc_traceback):
-            if issubclass(exc_type, KeyboardInterrupt):
-                # Don't report KeyboardInterrupt
-                sys.__excepthook__(exc_type, exc_value, exc_traceback)
-                return
+    if sentry_dsn and not SENTRY_AVAILABLE:
+        root_logger.warning("Sentry DSN provided but sentry-sdk is not installed")
 
-            sentry_sdk.capture_exception(exc_value)
 
-        import sys
-
-        sys.excepthook = handle_exception
+def capture_exception(exc: BaseException) -> None:
+    if SENTRY_AVAILABLE and sentry_sdk is not None:
+        sentry_sdk.capture_exception(exc)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Get a configured structlog logger."""
-    return structlog.wrap_logger(logging.getLogger(name))
-
-
-# Initialize logger for the core application
-logger = get_logger(__name__)
+    return structlog.get_logger(name)

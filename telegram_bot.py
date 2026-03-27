@@ -89,7 +89,7 @@ def _get_store(cfg: Config) -> MySQLStore | None:
     if not cfg.mysql_enabled:
         return None
     store = MySQLStore(cfg)
-    store.connect()
+
     return store
 
 

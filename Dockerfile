@@ -1,21 +1,50 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV POETRY_VERSION=1.8.4
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
+    && apt-get install -y --no-install-recommends build-essential gcc curl ca-certificates \
+    && python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
     && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
-COPY app ./app
+COPY requirements.txt .
+RUN /opt/venv/bin/pip install -r requirements.txt
 
-RUN poetry config virtualenvs.create false \
-    && poetry install --only main --no-interaction --no-ansi
+
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --create-home --home-dir /home/app app \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+COPY app ./app
+COPY integrations ./integrations
+COPY utils.py ./
+COPY .env.example ./
+
+RUN mkdir -p /app/logs \
+    && chown -R app:app /app /opt/venv /home/app
+
+USER app
+
+EXPOSE 8000 8501
 
 CMD ["python", "-m", "app.scraper_worker"]

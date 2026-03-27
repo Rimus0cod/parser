@@ -10,3 +10,11 @@ venv/
 mysql_data/
 redis_data/
 poetry.lock
+dist/
+handoff/
+htmlcov/
+backups/
+logs/
+*.pyc
+*.pyo
+*.lnk

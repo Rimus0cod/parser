@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "real-estate-saas-core"
-version = "0.1.0"
-description = "On-premise SaaS foundation for real estate lead scraping and operations."
+version = "0.2.0"
+description = "Production-oriented async real estate scraping platform."
 authors = ["Parser Team <team@example.com>"]
 readme = "README.md"
 packages = [{ include = "app" }]
@@ -24,11 +24,13 @@ pyyaml = "^6.0.2"
 passlib = "^1.7.4"
 pyjwt = "^2.9.0"
 email-validator = "^2.2.0"
+sentry-sdk = { extras = ["aiohttp", "httpx"], version = "^2.19.2" }
+structlog = "^24.4.0"
+pandas = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.4"
 mypy = "^1.13.0"
-pytest = "^8.3.3"
 
 [tool.ruff]
 line-length = 100

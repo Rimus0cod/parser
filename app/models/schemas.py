@@ -15,6 +15,7 @@ class Lead(BaseModel):
     location: str
     size: str
     link: HttpUrl | str
+    source_site: str = ""
     phone: str
     seller_name: str
     ad_type: str
