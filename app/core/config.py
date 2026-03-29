@@ -175,6 +175,15 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
 
+    voice_enabled: bool = False
+    voice_public_base_url: str = ""
+    voice_ws_public_url: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_validate: bool = True
+    google_application_credentials: str = ""
+
     sites: list[SiteConfig] = Field(default_factory=_default_sites)
 
     scrape_timeout_seconds: float = 30.0

@@ -108,6 +108,55 @@ async def init_schema() -> None:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
                             raise
 
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tenant_contacts (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        full_name VARCHAR(255) NOT NULL DEFAULT '',
+                        phone_raw VARCHAR(64) NOT NULL,
+                        phone_normalized VARCHAR(32) NOT NULL,
+                        phone_e164 VARCHAR(32) NOT NULL DEFAULT '',
+                        notes TEXT,
+                        import_source VARCHAR(255) NOT NULL DEFAULT '',
+                        active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uniq_tenant_phone_normalized (phone_normalized)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS voice_calls (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        source_type VARCHAR(50) NOT NULL,
+                        listing_ad_id VARCHAR(50) NULL,
+                        tenant_contact_id INT NULL,
+                        twilio_call_sid VARCHAR(64) NULL,
+                        contact_name VARCHAR(255) NOT NULL DEFAULT '',
+                        phone_raw VARCHAR(64) NOT NULL DEFAULT '',
+                        phone_e164 VARCHAR(32) NOT NULL DEFAULT '',
+                        status VARCHAR(50) NOT NULL DEFAULT 'queued',
+                        script_name VARCHAR(120) NOT NULL DEFAULT '',
+                        answers_json JSON NULL,
+                        transcript LONGTEXT NULL,
+                        recording_url TEXT NULL,
+                        last_error TEXT NULL,
+                        initiated_by VARCHAR(120) NOT NULL DEFAULT '',
+                        started_at DATETIME NULL,
+                        answered_at DATETIME NULL,
+                        completed_at DATETIME NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        KEY idx_voice_calls_status (status),
+                        KEY idx_voice_calls_listing_ad_id (listing_ad_id),
+                        KEY idx_voice_calls_tenant_contact_id (tenant_contact_id),
+                        UNIQUE KEY uniq_voice_calls_twilio_call_sid (twilio_call_sid)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+
                 await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_source_site'")
                 if await cur.fetchone() is None:
                     try:

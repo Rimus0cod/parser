@@ -11,6 +11,8 @@ from app.db.mysql import init_schema
 from app.models.schemas import Agency, Lead, TriggerScrapeResponse
 from app.services.async_scraper import MultiSiteScraper
 from app.services.repository import list_agencies, list_leads, upsert_leads
+from app.voice.router import router as voice_router
+from app.voice.runtime import prepare_voice_runtime
 
 settings = get_settings()
 configure_logging(
@@ -59,6 +61,7 @@ async def _run_scrape_job() -> None:
 @app.on_event("startup")
 async def startup() -> None:
     await init_schema()
+    prepare_voice_runtime()
 
 
 @app.get("/health")
@@ -87,3 +90,6 @@ async def get_agencies(limit: int = Query(default=100, ge=1, le=1000)) -> list[A
 async def trigger_scrape(background_tasks: BackgroundTasks) -> TriggerScrapeResponse:
     background_tasks.add_task(_run_scrape_job)
     return TriggerScrapeResponse(status="queued", message="Scrape task has been queued.")
+
+
+app.include_router(voice_router)

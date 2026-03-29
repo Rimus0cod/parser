@@ -1,5 +1,6 @@
 .env
 google.json
+credentials.json
 parser.log
 __pycache__/
 .pytest_cache/

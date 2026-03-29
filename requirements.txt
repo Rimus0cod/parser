@@ -1,20 +1,39 @@
-# Runtime + backward-compat dependencies for Docker and local installs.
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-httpx>=0.28.0
-beautifulsoup4>=4.12.3
-lxml>=5.3.0
-aiomysql>=0.2.0
-redis>=5.2.0
-pydantic>=2.10.0
-pydantic-settings>=2.6.0
-python-dotenv>=1.0.1
-streamlit>=1.40.0
-streamlit-authenticator>=0.4.1
-PyYAML>=6.0.2
-passlib>=1.7.4
-PyJWT>=2.9.0
-email-validator>=2.2.0
-sentry-sdk[aiohttp,httpx]>=2.19.2
+# =============================================================================
+# requirements.txt — Python dependencies for the imoti.bg rental scraper
+#
+# Install with:
+#     pip install -r requirements.txt
+#
+# Python 3.11+ required.
+# =============================================================================
+
+# ── HTTP & HTML parsing ───────────────────────────────────────────────────────
+requests>=2.31.0            # HTTP client with retries and session support
+beautifulsoup4>=4.12.0      # HTML parser (screen-scraping DOM traversal)
+lxml>=5.1.0                 # Fast HTML/XML parser backend for BeautifulSoup
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pandas>=2.0.0              # DataFrame and CSV export
+
+# ── Google Sheets ─────────────────────────────────────────────────────────────
+gspread>=6.0.0              # Google Sheets API client (read/write worksheets)
+google-auth>=2.28.0         # Google OAuth2 / service-account authentication
+mysql-connector-python>=9.0.0  # MySQL driver for persistence
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0        # Load .env files into os.environ
+
+# ── Data manipulation ─────────────────────────────────────────────────────────
+pandas>=2.1.0               # DataFrame used by agency_contacts.enrich_dataframe()
+
+# ── Rich terminal output (coloured logging + summary tables) ──────────────────
+rich>=13.7.0                # Beautiful terminal output with colour and tables              # Beautiful terminal output with colour and tables
+sentry-sdk[aiohttp,httpx]>=2.19.0  # Error tracking used by app.core.logging
 structlog>=24.4.0
-pandas>=2.2.0
+python -m compileall app/core/logging.py app/services/async_scraper.py app/core/config.py
+# ── Optional: APScheduler for in-process background scheduling ────────────────
+# Uncomment if you prefer running as a long-lived daemon instead of cron.
+# apscheduler>=3.10.0
+
+# ── Telegram bot handlers ─────────────────────────────────────────────────────
+python-telegram-bot>=21.0

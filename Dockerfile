@@ -37,6 +37,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 COPY integrations ./integrations
+COPY tts_cache ./tts_cache
 COPY utils.py ./
 COPY .env.example ./
 
