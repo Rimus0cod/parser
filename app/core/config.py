@@ -37,16 +37,40 @@ def _default_user_agents() -> list[str]:
     ]
 
 
+def _default_scrapling_blocked_markers() -> list[str]:
+    return [
+        "access denied",
+        "blocked",
+        "captcha",
+        "cf-challenge",
+        "cloudflare",
+        "ddos protection",
+        "enable javascript and cookies",
+        "human verification",
+        "just a moment",
+        "please verify you are a human",
+        "request unsuccessful",
+        "security check",
+        "turnstile",
+        "unusual traffic",
+        "verify you are human",
+    ]
+
+
 class SiteConfig(BaseModel):
     name: str
     base_url: str
     max_pages: int = 5
     selectors: dict[str, str] = Field(default_factory=dict)
+    selector_version: str = "v1"
     timeout: float = 30.0
     concurrency: int = 4
     enabled: bool = True
     verify_ssl: bool = True
     detail_pages_enabled: bool = True
+    mode_order: list[Literal["http", "dynamic", "stealth"]] = Field(
+        default_factory=lambda: ["http", "dynamic", "stealth"]
+    )
     listing_path_keywords: list[str] = Field(default_factory=list)
     allowed_domains: list[str] = Field(default_factory=list)
 
@@ -199,6 +223,21 @@ class Settings(BaseSettings):
     scrape_detail_pages: bool = True
     http_max_connections: int = 30
     http_max_keepalive_connections: int = 10
+    scrapling_dynamic_enabled: bool = False
+    scrapling_stealth_enabled: bool = False
+    scrapling_dynamic_concurrency: int = 2
+    scrapling_stealth_concurrency: int = 1
+    scrapling_http_impersonate: str = "chrome"
+    scrapling_http3: bool = True
+    scrapling_disable_resources: bool = True
+    scrapling_disable_ads: bool = True
+    scrapling_block_webrtc: bool = True
+    scrapling_network_idle: bool = True
+    scrapling_solve_cloudflare: bool = True
+    scrapling_stealth_humanize: bool = True
+    scrapling_wait_selector_timeout_ms: int = 12000
+    scrapling_blocked_markers: list[str] = Field(default_factory=_default_scrapling_blocked_markers)
+    scrapling_storage_table: str = "scrapling_adaptive_elements"
     city_filter: str | None = None
     scraper_sites: str = ""
 
@@ -246,28 +285,6 @@ class Settings(BaseSettings):
     bitrix24_domain: str = ""
     bitrix24_client_id: str = ""
     bitrix24_client_secret: str = ""
-
-    google_sheet_id: str = ""
-    service_account_json: str = "./google.json"
-    sheet_name: str = "Imoti_BG_Rentals"
-    email_from: str = ""
-    email_to: str = ""
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    max_pages: int = 26
-    request_delay_min: float = 2.0
-    request_delay_max: float = 5.0
-    log_file: str = "./parser.log"
-    agencies_csv_path: str = "./agencies.csv"
-    mysql_enabled: bool = True
-    telegram_bot_token: str = ""
-    telegram_chat_id: str = ""
-    telegram_allowed_chat_ids: str = ""
-    telegram_history_chunk_size: int = 20
-    telegram_default_history_days: int = 7
-    telegram_startup_preview_count: int = 3
 
     @property
     def proxy_pool(self) -> list[str]:
@@ -322,3 +339,42 @@ def get_settings() -> Settings:
             site.concurrency = settings.scrape_concurrency
 
     return settings
+
+
+def _looks_like_placeholder_secret(value: str) -> bool:
+    normalized = value.strip().lower()
+    return normalized in {
+        "",
+        "app_password",
+        "change_me_cookie_key_please",
+        "change_me_jwt_secret_32chars_min",
+        "change_me_mysql_password",
+        "change_me_root_password",
+    } or normalized.startswith(("change_me", "replace_me", "replace_with"))
+
+
+def validate_runtime_settings(settings: Settings, *, component: str) -> None:
+    if settings.app_env != "prod":
+        return
+
+    issues: list[str] = []
+    database_secret = (
+        settings.mysql_root_password
+        if settings.mysql_user == "root" and settings.mysql_root_password
+        else settings.mysql_password
+    )
+
+    if _looks_like_placeholder_secret(database_secret):
+        issues.append("database password is empty or still uses a placeholder value")
+    if _looks_like_placeholder_secret(settings.streamlit_cookie_key):
+        issues.append("STREAMLIT_COOKIE_KEY must be replaced for production")
+    if _looks_like_placeholder_secret(settings.streamlit_jwt_secret):
+        issues.append("STREAMLIT_JWT_SECRET must be replaced for production")
+    if settings.voice_enabled and not settings.voice_public_base_url:
+        issues.append("VOICE_PUBLIC_BASE_URL is required when voice integration is enabled")
+    if settings.voice_enabled and not settings.voice_ws_public_url:
+        issues.append("VOICE_WS_PUBLIC_URL is required when voice integration is enabled")
+
+    if issues:
+        joined_issues = "; ".join(issues)
+        raise RuntimeError(f"Unsafe production configuration for {component}: {joined_issues}.")

@@ -23,8 +23,13 @@ help: ## Показать это сообщение помощи
 setup: ## Первоначальная настройка проекта
 	@echo "🚀 Setting up Real Estate SaaS Core..."
 	@if [ ! -f .env ]; then \
-		echo "📝 Creating .env from .env.example..."; \
-		cp .env.example .env; \
+		if [ -f .env.example ]; then \
+			echo "📝 Creating .env from .env.example..."; \
+			cp .env.example .env; \
+		else \
+			echo "📝 .env.example not found, creating empty .env..."; \
+			touch .env; \
+		fi; \
 		echo "⚠️  Please edit .env and fill in your secrets!"; \
 	else \
 		echo "✅ .env already exists"; \
@@ -184,8 +189,13 @@ type-check: ## Проверить типы с помощью mypy
 	@echo "🔍 Type checking..."
 	poetry run mypy app/ integrations/
 
+.PHONY: test
+test: ## Запустить unit-тесты
+	@echo "🧪 Running tests..."
+	poetry run python -m unittest discover -s tests -v
+
 .PHONY: check
-check: lint type-check ## Запустить все проверки (lint + type-check)
+check: lint type-check test ## Запустить все проверки (lint + type-check + tests)
 
 .PHONY: clean
 clean: ## Очистить временные файлы

@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import BackgroundTasks, FastAPI, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 from redis import Redis
 
-from app.core.config import get_settings
+from app.core.config import get_settings, validate_runtime_settings
 from app.core.logging import configure_logging, get_logger
-from app.db.mysql import init_schema
+from app.db.mysql import init_schema, ping_mysql
 from app.models.schemas import Agency, Lead, TriggerScrapeResponse
-from app.services.async_scraper import MultiSiteScraper
-from app.services.repository import list_agencies, list_leads, upsert_leads
+from app.scraping import build_scraping_engine
+from app.services.scrape_lock import (
+    acquire_scrape_lock,
+    release_scrape_lock,
+    scrape_lock_ttl_seconds,
+)
+from app.services.repository import list_agencies, list_leads, record_scrape_execution, upsert_leads
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
@@ -38,40 +44,65 @@ def _redis() -> Redis:
     )
 
 
-async def _run_scrape_job() -> None:
+async def _run_scrape_job(lock_token: str) -> None:
     redis = _redis()
     redis.set("scrape:last_status", "running")
     redis.set("scrape:last_started_at", datetime.now(timezone.utc).isoformat())
     try:
-        scraper = MultiSiteScraper(settings)
-        leads = await scraper.scrape_all_sites()
+        engine = build_scraping_engine(settings)
+        execution = await engine.scrape_all_sites()
+        leads = execution.listings
         written = await upsert_leads(leads)
+        await record_scrape_execution(execution)
         redis.set("scrape:last_status", "ok")
         redis.set("scrape:last_written", str(written))
         redis.set("scrape:last_total_scraped", str(len(leads)))
-        logger.info("Background scrape finished", parsed=len(leads), written=written)
+        redis.set("scrape:last_rejected", str(execution.rejected_count))
+        logger.info(
+            "Background scrape finished",
+            parsed=len(leads),
+            rejected=execution.rejected_count,
+            written=written,
+        )
     except Exception as exc:  # noqa: BLE001
         redis.set("scrape:last_status", "error")
         redis.set("scrape:last_error", str(exc))
         logger.exception("Background scrape failed", error=str(exc))
     finally:
+        try:
+            release_scrape_lock(redis, lock_token)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to release scrape lock", error=str(exc))
         redis.set("scrape:last_finished_at", datetime.now(timezone.utc).isoformat())
 
 
 @app.on_event("startup")
 async def startup() -> None:
+    validate_runtime_settings(settings, component="api")
     await init_schema()
     prepare_voice_runtime()
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    status = {"status": "ok", "app": settings.app_name}
+    return {"status": "ok", "app": settings.app_name}
+
+
+@app.get("/readyz")
+async def readiness() -> JSONResponse:
     try:
-        status["redis"] = "ok" if _redis().ping() else "error"
+        redis_ok = bool(_redis().ping())
     except Exception:  # noqa: BLE001
-        status["redis"] = "error"
-    return status
+        redis_ok = False
+
+    mysql_ok = await ping_mysql()
+    payload = {
+        "status": "ok" if redis_ok and mysql_ok else "error",
+        "app": settings.app_name,
+        "redis": "ok" if redis_ok else "error",
+        "mysql": "ok" if mysql_ok else "error",
+    }
+    return JSONResponse(status_code=200 if payload["status"] == "ok" else 503, content=payload)
 
 
 @app.get("/leads", response_model=list[Lead])
@@ -88,7 +119,24 @@ async def get_agencies(limit: int = Query(default=100, ge=1, le=1000)) -> list[A
 
 @app.post("/trigger-scrape", response_model=TriggerScrapeResponse)
 async def trigger_scrape(background_tasks: BackgroundTasks) -> TriggerScrapeResponse:
-    background_tasks.add_task(_run_scrape_job)
+    try:
+        redis = _redis()
+        lock_token = acquire_scrape_lock(
+            redis,
+            owner="api-trigger",
+            ttl_seconds=scrape_lock_ttl_seconds(settings.scrape_interval_seconds),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Scrape trigger failed because Redis is unavailable", error=str(exc))
+        raise HTTPException(status_code=503, detail="Redis is unavailable; scrape trigger was rejected.") from exc
+
+    if lock_token is None:
+        return TriggerScrapeResponse(
+            status="busy",
+            message="A scrape job is already running. Wait for it to finish before triggering another one.",
+        )
+
+    background_tasks.add_task(_run_scrape_job, lock_token)
     return TriggerScrapeResponse(status="queued", message="Scrape task has been queued.")
 
 

@@ -25,7 +25,7 @@ The project is designed to run primarily through Docker Compose and includes:
 
 ## Key Features
 
-- Async multi-site scraper built on `httpx`, `asyncio`, `BeautifulSoup`
+- Async multi-site scraper built on `scrapling` sessions with adaptive selectors and mode escalation
 - REST API for health checks, leads, agencies, and manual scrape triggering
 - Streamlit dashboard for operators
 - MySQL persistence with typed repository layer
@@ -79,7 +79,7 @@ app/
   core/logging.py            structured logging and optional Sentry setup
   db/mysql.py                MySQL pool and schema initialization
   models/schemas.py          API response models
-  services/async_scraper.py  async scraping engine
+  scraping/                  production scraping engine, Scrapling fetchers, profiles, validation
   services/repository.py     database access layer
   scraper_worker.py          long-running worker loop
   ui/streamlit_app.py        operator dashboard
@@ -110,10 +110,12 @@ Default built-in sources:
 - `olx.ua`
 - `lun.ua`
 
-For controlled production rollouts it is recommended to limit active sources explicitly through `.env`, for example:
+If `SCRAPER_SITES` is left empty, the built-in defaults are used.
+
+For controlled production rollouts, `SCRAPER_SITES` should be a JSON array of full site objects, for example:
 
 ```env
-SCRAPER_SITES=["imoti.bg","alo.bg"]
+SCRAPER_SITES=[{"name":"imoti.bg","base_url":"https://imoti.bg/наеми/page:{page}","max_pages":5,"selectors":{"card":"article, li, section, div","title":"h4 a[href*='/наеми/'], h3 a[href*='/наеми/'], a[href*='/наеми/']","link":"h4 a[href*='/наеми/'], h3 a[href*='/наеми/'], a[href*='/наеми/']","seller":"[class*='agency'], [class*='broker'], [class*='owner']"},"selector_version":"v2","timeout":30.0,"concurrency":4,"enabled":true,"verify_ssl":true,"detail_pages_enabled":true,"mode_order":["http","dynamic","stealth"],"listing_path_keywords":["/наеми/"],"allowed_domains":["imoti.bg"]}]
 ```
 
 ## Requirements
@@ -129,6 +131,7 @@ SCRAPER_SITES=["imoti.bg","alo.bg"]
 - Poetry `1.8+`
 - MySQL `8`
 - Redis `7`
+- Browser dependencies for `scrapling` dynamic / stealth fetchers
 
 ## Quick Start
 
@@ -151,6 +154,7 @@ Recommended:
 - keep `LOG_FORMAT=json`
 - enable `SENTRY_DSN` if you use Sentry
 - restrict `SCRAPER_SITES` to the sources you actually want to run
+- keep `SCRAPLING_DYNAMIC_ENABLED=false` and `SCRAPLING_STEALTH_ENABLED=false` until you validate target sites
 
 ### 2. Prepare Streamlit users
 
@@ -160,7 +164,8 @@ Generate a password hash:
 python -m app.ui.generate_password_hashes "your-strong-password"
 ```
 
-Put the resulting hash into [`app/ui/users.yaml`](/home/diff/Parser_prod/app/ui/users.yaml).
+Put the resulting hash into [app/ui/users.yaml](/Users/diff/code/parser/app/ui/users.yaml).
+Do not keep real operator emails or passwords in the repository version of this file.
 
 Example:
 
@@ -173,7 +178,17 @@ credentials:
       password: "$2b$12$replace_with_generated_hash"
 ```
 
-### 3. Build and start services
+### 3. Install Scrapling browser runtime for local development
+
+If you plan to use `dynamic` or `stealth` modes locally, install the browser runtime once:
+
+```bash
+poetry run scrapling install
+```
+
+Inside Docker this step is already baked into the image build.
+
+### 4. Build and start services
 
 ```bash
 docker compose up -d --build
@@ -185,15 +200,16 @@ Or via `Makefile`:
 make up-build
 ```
 
-### 4. Check health
+### 5. Check health
 
 ```bash
 curl http://localhost:8000/health
+curl http://localhost:8000/readyz
 curl http://localhost:8501/_stcore/health
 docker compose ps
 ```
 
-### 5. Open the platform
+### 6. Open the platform
 
 - UI: `http://localhost:8501`
 - API docs: `http://localhost:8000/docs`
@@ -237,7 +253,7 @@ ORDER BY total DESC;
 
 ## Environment Variables
 
-Main configuration lives in [`.env.example`](/home/diff/Parser_prod/.env.example).
+Main configuration lives in [.env.example](/Users/diff/code/parser/.env.example).
 
 ### Core
 
@@ -275,6 +291,21 @@ Main configuration lives in [`.env.example`](/home/diff/Parser_prod/.env.example
 - `SCRAPE_DETAIL_PAGES`
 - `HTTP_MAX_CONNECTIONS`
 - `HTTP_MAX_KEEPALIVE_CONNECTIONS`
+- `SCRAPLING_DYNAMIC_ENABLED`
+- `SCRAPLING_STEALTH_ENABLED`
+- `SCRAPLING_DYNAMIC_CONCURRENCY`
+- `SCRAPLING_STEALTH_CONCURRENCY`
+- `SCRAPLING_HTTP_IMPERSONATE`
+- `SCRAPLING_HTTP3`
+- `SCRAPLING_DISABLE_RESOURCES`
+- `SCRAPLING_DISABLE_ADS`
+- `SCRAPLING_BLOCK_WEBRTC`
+- `SCRAPLING_NETWORK_IDLE`
+- `SCRAPLING_SOLVE_CLOUDFLARE`
+- `SCRAPLING_STEALTH_HUMANIZE`
+- `SCRAPLING_WAIT_SELECTOR_TIMEOUT_MS`
+- `SCRAPLING_BLOCKED_MARKERS`
+- `SCRAPLING_STORAGE_TABLE`
 - `CITY_FILTER`
 - `SCRAPER_SITES`
 
@@ -309,22 +340,6 @@ Main configuration lives in [`.env.example`](/home/diff/Parser_prod/.env.example
 - `AMOCRM_*`
 - `BITRIX24_*`
 
-### Legacy compatibility
-
-These variables are still present for backward compatibility and migration, but they are not part of the main `api + scraper + streamlit` runtime path:
-
-- `GOOGLE_SHEET_ID`
-- `SERVICE_ACCOUNT_JSON`
-- `SHEET_NAME`
-- `EMAIL_*`
-- `SMTP_*`
-- `MAX_PAGES`
-- `REQUEST_DELAY_*`
-- `LOG_FILE`
-- `AGENCIES_CSV_PATH`
-- `MYSQL_ENABLED`
-- `TELEGRAM_*`
-
 ## Services
 
 ### `mysql`
@@ -344,12 +359,14 @@ These variables are still present for backward compatibility and migration, but 
 - Exposes REST endpoints
 - Can trigger background scrape jobs
 - Bootstraps schema on startup
+- Must include Scrapling browser runtime because `POST /trigger-scrape` can escalate into `dynamic` / `stealth`
 
 ### `scraper`
 
 - Runs scheduled scraping loop
 - Writes run status into Redis
 - Writes listings to MySQL
+- Uses `http -> dynamic -> stealth` escalation when a source is blocked, JS-rendered, or fails required selector checks
 
 ### `streamlit_ui`
 
@@ -360,7 +377,11 @@ These variables are still present for backward compatibility and migration, but 
 
 ### `GET /health`
 
-Returns service health summary.
+Returns a liveness response for the API process.
+
+### `GET /readyz`
+
+Returns dependency readiness for Redis and MySQL and responds with `503` when the stack is not ready.
 
 ### `GET /leads?limit=100`
 
@@ -373,6 +394,7 @@ Returns recent agencies if present in storage.
 ### `POST /trigger-scrape`
 
 Queues a background scrape task in the API process.
+Returns `busy` when another scrape run is already active.
 
 ## Local Development
 
@@ -380,6 +402,13 @@ Install dependencies:
 
 ```bash
 poetry install --with dev
+poetry run scrapling install
+```
+
+Run checks:
+
+```bash
+make check
 ```
 
 Run API:
@@ -483,6 +512,7 @@ Useful runtime signals:
 
 - API health via `/health`
 - Streamlit health via `/_stcore/health`
+- Structured logs from `scraping_engine` and `scraping_strategies` include `site`, `mode`, `attempt`, and `blocked_reason`
 - Redis keys:
   - `scrape:worker_status`
   - `scrape:last_status`
@@ -501,6 +531,7 @@ Useful runtime signals:
 - Enable backups for MySQL volume
 - Set up Sentry or central log shipping
 - Restrict `SCRAPER_SITES` to validated sources
+- Keep `SCRAPLING_DYNAMIC_ENABLED` and `SCRAPLING_STEALTH_ENABLED` off until HTTP mode is validated for each enabled source
 - Verify one manual scrape before enabling long-running worker mode
 
 ### Recommended deployment model
@@ -516,6 +547,7 @@ Useful runtime signals:
 - Some sites expose masked or bot-protected contact data.
 - `alo.bg` may hide phone numbers behind anti-bot flow; in such cases the system should keep `phone` empty instead of storing fake data.
 - Source markup changes can break extraction logic, so each enabled source should be validated after deployment.
+- Browser-backed modes need enough shared memory; the provided Compose file sets `shm_size: 1gb` for `api` and `scraper`.
 
 ## Troubleshooting
 
@@ -539,6 +571,12 @@ docker compose exec redis redis-cli MGET scrape:last_status scrape:last_total_sc
 ```
 
 If `HTTP 200` exists but `last_total_scraped=0`, the source likely changed markup and needs parser updates.
+
+If logs show `blocked_reason` or repeated fallback to `dynamic` / `stealth`, validate:
+
+- browser runtime was installed successfully in the image
+- `SCRAPLING_DYNAMIC_ENABLED=true` or `SCRAPLING_STEALTH_ENABLED=true` for the affected site
+- target site still matches the configured selectors in `app/core/config.py`
 
 ### MySQL auth errors
 
@@ -576,4 +614,4 @@ docker compose up -d --build
 
 ## License
 
-See [LICENSE](/home/diff/Parser_prod/LICENSE).
+See [LICENSE](/Users/diff/code/parser/LICENSE).

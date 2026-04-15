@@ -7,11 +7,17 @@ from datetime import datetime, timezone
 
 from redis import Redis
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, get_settings, validate_runtime_settings
 from app.core.logging import capture_exception, configure_logging, get_logger
 from app.db.mysql import init_schema
-from app.services.async_scraper import MultiSiteScraper, ScrapedListing
-from app.services.repository import upsert_leads
+from app.scraping import build_scraping_engine
+from app.scraping.models import ScrapedListing
+from app.services.repository import record_scrape_execution, upsert_leads
+from app.services.scrape_lock import (
+    acquire_scrape_lock,
+    release_scrape_lock,
+    scrape_lock_ttl_seconds,
+)
 from integrations.amocrm import get_amocrm_integration
 from integrations.bitrix24 import get_bitrix24_integration
 from integrations.webhooks import get_webhook_integration
@@ -78,10 +84,32 @@ async def send_to_integrations(listings: list[ScrapedListing]) -> None:
 async def run_once(settings: Settings | None = None) -> int:
     settings = settings or get_settings()
     redis = None
+    lock_token: str | None = None
     try:
         redis = _redis(settings)
     except Exception:  # noqa: BLE001
         redis = None
+
+    if redis is not None:
+        try:
+            lock_token = acquire_scrape_lock(
+                redis,
+                owner="scraper-worker",
+                ttl_seconds=scrape_lock_ttl_seconds(settings.scrape_interval_seconds),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to acquire scrape lock", error=str(exc))
+
+        if lock_token is None:
+            _set_redis_state(
+                redis,
+                **{
+                    "scrape:last_status": "busy",
+                    "scrape:last_execution_time": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            logger.info("Skipping scrape cycle because another scrape run is already active")
+            return 0
 
     started_at = datetime.now(timezone.utc).isoformat()
     _set_redis_state(
@@ -92,27 +120,43 @@ async def run_once(settings: Settings | None = None) -> int:
         },
     )
 
-    logger.info("Starting scrape cycle", site_count=len(settings.sites))
-    scraper = MultiSiteScraper(settings)
-    listings = await scraper.scrape_all_sites()
-    written = await upsert_leads(listings)
-    await send_to_integrations(listings)
+    try:
+        logger.info("Starting scrape cycle", site_count=len(settings.sites))
+        engine = build_scraping_engine(settings)
+        execution = await engine.scrape_all_sites()
+        listings = execution.listings
+        written = await upsert_leads(listings)
+        await record_scrape_execution(execution)
+        await send_to_integrations(listings)
 
-    _set_redis_state(
-        redis,
-        **{
-            "scrape:last_status": "ok",
-            "scrape:last_worker_written": str(written),
-            "scrape:last_total_scraped": str(len(listings)),
-            "scrape:last_execution_time": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-    logger.info("Scrape cycle finished", parsed=len(listings), upserted=written)
-    return written
+        _set_redis_state(
+            redis,
+            **{
+                "scrape:last_status": "ok",
+                "scrape:last_worker_written": str(written),
+                "scrape:last_total_scraped": str(len(listings)),
+                "scrape:last_rejected": str(execution.rejected_count),
+                "scrape:last_execution_time": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        logger.info(
+            "Scrape cycle finished",
+            parsed=len(listings),
+            rejected=execution.rejected_count,
+            upserted=written,
+        )
+        return written
+    finally:
+        if redis is not None and lock_token is not None:
+            try:
+                release_scrape_lock(redis, lock_token)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to release scrape lock", error=str(exc))
 
 
 async def run_forever() -> None:
     settings = get_settings()
+    validate_runtime_settings(settings, component="scraper-worker")
     configure_logging(
         sentry_dsn=settings.sentry_dsn,
         environment=settings.sentry_environment,

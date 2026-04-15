@@ -4,7 +4,7 @@ from typing import List, Optional
 import httpx
 
 from app.core.config import Bitrix24Config, get_settings
-from app.services.async_scraper import ScrapedListing
+from app.scraping.models import ScrapedListing
 
 logger = logging.getLogger(__name__)
 

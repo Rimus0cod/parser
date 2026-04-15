@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.config import get_settings
+from app.core.config import validate_runtime_settings
 from app.services.repository import (
     list_agencies,
     list_leads,
@@ -34,13 +35,26 @@ settings = get_settings()
 
 
 def load_auth_config() -> dict[str, Any]:
-    with open(settings.streamlit_users_yaml_path, "r", encoding="utf-8") as file:
+    config_path = Path(settings.streamlit_users_yaml_path)
+    if not config_path.exists():
+        raise RuntimeError(
+            f"Streamlit users config is missing: {config_path}. "
+            "Create the file before starting the dashboard."
+        )
+    with open(config_path, "r", encoding="utf-8") as file:
         config = yaml.load(file, Loader=SafeLoader)
+    usernames = config.get("credentials", {}).get("usernames", {})
+    if not usernames:
+        raise RuntimeError("Streamlit users config does not define any usernames.")
     return config
 
 
 def render_login() -> tuple[bool, str | None]:
-    config = load_auth_config()
+    try:
+        config = load_auth_config()
+    except (OSError, RuntimeError, yaml.YAMLError) as exc:
+        st.error(f"Dashboard authentication config error: {exc}")
+        return False, None
     authenticator = stauth.Authenticate(
         config["credentials"],
         settings.streamlit_cookie_name,
@@ -224,6 +238,11 @@ def _render_tenant_contacts_tab(tenant_contacts_df: pd.DataFrame) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Lead SaaS Dashboard", layout="wide")
+    try:
+        validate_runtime_settings(settings, component="streamlit")
+    except RuntimeError as exc:
+        st.error(str(exc))
+        return
     ok, username = render_login()
     if not ok:
         return

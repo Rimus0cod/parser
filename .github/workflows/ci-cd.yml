@@ -40,6 +40,9 @@ jobs:
       - name: MyPy
         run: poetry run mypy app/ integrations/
 
+      - name: Unit tests
+        run: poetry run python -m unittest discover -s tests -v
+
   docker-build:
     runs-on: ubuntu-latest
     needs: quality

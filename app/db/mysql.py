@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
-import aiomysql
-from pymysql.err import OperationalError
+try:
+    import aiomysql
+except ImportError:  # pragma: no cover - optional dependency path for test imports
+    aiomysql = None
 
-from app.core.config import get_settings
+try:
+    from pymysql.err import OperationalError
+except ImportError:  # pragma: no cover - optional dependency path for test imports
+    OperationalError = RuntimeError
 
 logger = logging.getLogger(__name__)
 MYSQL_DUPLICATE_KEY_ERROR = 1061
@@ -15,6 +20,8 @@ MYSQL_DUPLICATE_COLUMN_ERROR = 1060
 
 
 def _effective_mysql_password() -> str:
+    from app.core.config import get_settings
+
     settings = get_settings()
     if settings.mysql_user == "root" and settings.mysql_root_password:
         if settings.mysql_password and settings.mysql_password != settings.mysql_root_password:
@@ -27,7 +34,11 @@ def _effective_mysql_password() -> str:
 
 
 @asynccontextmanager
-async def mysql_pool() -> AsyncIterator[aiomysql.Pool]:
+async def mysql_pool() -> AsyncIterator[Any]:
+    if aiomysql is None:
+        raise RuntimeError("aiomysql is not installed.")
+    from app.core.config import get_settings
+
     settings = get_settings()
     pool = await aiomysql.create_pool(
         host=settings.mysql_host,
@@ -164,3 +175,50 @@ async def init_schema() -> None:
                     except OperationalError as exc:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
                             raise
+
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS scrapling_adaptive_elements (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        target_url VARCHAR(1024) NOT NULL,
+                        identifier VARCHAR(255) NOT NULL,
+                        selector_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+                        payload_json LONGTEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uniq_scrapling_adaptive_target (
+                            target_url(255),
+                            identifier,
+                            selector_version
+                        )
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+
+                await cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS scrape_runs (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        source_site VARCHAR(120) NOT NULL,
+                        strategy_name VARCHAR(120) NOT NULL DEFAULT '',
+                        mode_used VARCHAR(32) NOT NULL DEFAULT 'http',
+                        accepted_count INT NOT NULL DEFAULT 0,
+                        rejected_count INT NOT NULL DEFAULT 0,
+                        status VARCHAR(32) NOT NULL DEFAULT 'ok',
+                        error_summary TEXT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
+                    """
+                )
+
+
+async def ping_mysql() -> bool:
+    try:
+        async with mysql_pool() as pool:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT 1")
+                    row = await cur.fetchone()
+                    return bool(row)
+    except Exception:  # noqa: BLE001
+        return False

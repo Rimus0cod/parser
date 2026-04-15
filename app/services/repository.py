@@ -3,18 +3,23 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.db.mysql import mysql_pool
-from app.services.async_scraper import ScrapedListing, to_listing_rows
+
+if TYPE_CHECKING:
+    from app.scraping.contracts import ScrapeExecutionResult
+    from app.scraping.models import ScrapedListing
 
 logger = logging.getLogger(__name__)
 _MISSING = object()
 
 
-async def upsert_leads(rows: list[ScrapedListing]) -> int:
+async def upsert_leads(rows: list["ScrapedListing"]) -> int:
     if not rows:
         return 0
+
+    from app.scraping.models import to_listing_rows
 
     sql = """
     INSERT INTO listings (
@@ -41,6 +46,41 @@ async def upsert_leads(rows: list[ScrapedListing]) -> int:
             async with conn.cursor() as cur:
                 await cur.executemany(sql, to_listing_rows(rows))
     return len(rows)
+
+
+async def record_scrape_execution(execution: "ScrapeExecutionResult") -> None:
+    if not execution.site_results:
+        return
+
+    sql = """
+    INSERT INTO scrape_runs (
+        source_site,
+        strategy_name,
+        mode_used,
+        accepted_count,
+        rejected_count,
+        status,
+        error_summary
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    rows = [
+        (
+            result.site_name,
+            result.strategy_name,
+            result.mode_used,
+            result.accepted_count,
+            result.rejected_count,
+            "error" if result.errors else "ok",
+            "; ".join(result.errors)[:2000] if result.errors else None,
+        )
+        for result in execution.site_results
+    ]
+
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.executemany(sql, rows)
 
 
 async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
@@ -75,7 +115,7 @@ async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
         "contact_email",
         "updated_at",
     ]
-    return [dict(zip(keys, row, strict=False)) for row in rows]
+    return [dict(zip(keys, row)) for row in rows]
 
 
 async def list_agencies(limit: int = 100) -> list[dict[str, Any]]:
@@ -94,7 +134,7 @@ async def list_agencies(limit: int = 100) -> list[dict[str, Any]]:
                 rows = await cur.fetchall()
 
     keys = ["id", "agency_name", "phones", "city", "email", "contact_name", "updated_at"]
-    return [dict(zip(keys, row, strict=False)) for row in rows]
+    return [dict(zip(keys, row)) for row in rows]
 
 
 async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[str, Any]]:
@@ -143,7 +183,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
         "contact_email",
         "updated_at",
     ]
-    return [dict(zip(keys, row, strict=False)) for row in rows]
+    return [dict(zip(keys, row)) for row in rows]
 
 
 async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
@@ -181,7 +221,7 @@ async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
         "contact_email",
         "updated_at",
     ]
-    return dict(zip(keys, row, strict=False))
+    return dict(zip(keys, row))
 
 
 async def create_voice_call(
@@ -306,7 +346,7 @@ def _voice_call_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "listing_title",
         "listing_link",
     ]
-    data = dict(zip(keys, row, strict=False))
+    data = dict(zip(keys, row))
     raw_answers = data.get("answers_json")
     if isinstance(raw_answers, (bytes, bytearray)):
         raw_answers = raw_answers.decode("utf-8")
@@ -442,4 +482,4 @@ async def list_tenant_contacts(limit: int = 100) -> list[dict[str, Any]]:
         "created_at",
         "updated_at",
     ]
-    return [dict(zip(keys, row, strict=False)) for row in rows]
+    return [dict(zip(keys, row)) for row in rows]

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import csv
-from datetime import UTC, datetime, timezone
+import logging
+from datetime import datetime, timezone
 from io import StringIO
 from typing import Any
 
-from app.core.config import get_settings
-from app.core.logging import get_logger
-from app.services import repository
 from app.voice.phone import normalize_bulgarian_phone, to_bulgarian_e164
 from app.voice.prompts import SCRIPT_NAME
 
@@ -18,13 +16,18 @@ except ImportError:  # pragma: no cover - optional dependency path
     RequestValidator = None
     TwilioClient = None
 
-logger = get_logger("voice.service")
+try:
+    from app.core.logging import get_logger
+except ImportError:  # pragma: no cover - optional dependency path for lightweight tests
+    get_logger = None
+
+logger = get_logger("voice.service") if get_logger is not None else logging.getLogger("voice.service")
 
 TERMINAL_CALL_STATUSES = {"busy", "canceled", "completed", "failed", "no-answer"}
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _parse_session_datetime(value: str | None) -> datetime | None:
@@ -84,6 +87,8 @@ def parse_tenant_contacts_csv(content: bytes, filename: str = "upload.csv") -> l
 
 class VoiceService:
     def __init__(self, session_store: Any) -> None:
+        from app.core.config import get_settings
+
         self._settings = get_settings()
         self._session_store = session_store
 
@@ -122,6 +127,8 @@ class VoiceService:
         return validator.validate(url, params, signature)
 
     async def start_listing_call(self, listing_ad_id: str, initiated_by: str = "api") -> dict[str, Any]:
+        from app.services import repository
+
         client = self._ensure_twilio_client()
         listing = await repository.get_listing_by_ad_id(listing_ad_id)
         if listing is None:
@@ -183,6 +190,8 @@ class VoiceService:
         return voice_call
 
     async def bootstrap_session(self, voice_call_id: int, call_sid: str) -> dict[str, Any]:
+        from app.services import repository
+
         existing = self._session_store.get_session(call_sid)
         if existing is not None:
             return existing
@@ -227,6 +236,8 @@ class VoiceService:
         return session
 
     async def persist_session_snapshot(self, call_sid: str, *, status: str | None = None) -> None:
+        from app.services import repository
+
         session = self._session_store.get_session(call_sid)
         if session is None:
             return

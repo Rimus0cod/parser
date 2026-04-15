@@ -10,9 +10,23 @@ class MemoryRedis:
     def get(self, key: str) -> str | None:
         return self._data.get(key)
 
-    def set(self, key: str, value: str, ex: int | None = None) -> bool:  # noqa: ARG002
+    def set(  # noqa: ARG002
+        self,
+        key: str,
+        value: str,
+        ex: int | None = None,
+        nx: bool = False,
+    ) -> bool:
+        if nx and key in self._data:
+            return False
         self._data[key] = value
         return True
+
+    def delete(self, key: str) -> int:
+        if key not in self._data:
+            return 0
+        del self._data[key]
+        return 1
 
 
 class AsyncCursorStub:
