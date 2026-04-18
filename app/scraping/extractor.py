@@ -379,6 +379,17 @@ class ListingExtractor:
         return f"{match.group('size')} м²" if match else ""
 
     def _extract_location(self, text: str) -> str:
+        compact = self._clean_text(text)
+        location_match = re.search(
+            r"([A-ZА-ЯІЇЄҐ][A-Za-zÀ-ÿА-Яа-яІіЇїЄєҐґ' -]{1,40},\s*[A-ZА-ЯІЇЄҐ][A-Za-zÀ-ÿА-Яа-яІіЇїЄєҐґ' -]{1,40})",
+            compact,
+        )
+        if location_match:
+            candidate = self._clean_text(location_match.group(1))
+            candidate = re.sub(r"^(?:EUR|BGN|USD|UAH|грн\.?|лв\.?)\s+", "", candidate, flags=re.I)
+            if not PRICE_RE.search(candidate) and not SIZE_RE.search(candidate):
+                return candidate[:180]
+
         chunks = [self._clean_text(chunk) for chunk in re.split(r"[\n|]+", text)]
         for chunk in chunks:
             if len(chunk) < 3:

@@ -15,7 +15,7 @@ logger = get_logger("scraping_strategies")
 
 
 class SessionStrategy:
-    name = "scrapling_session"
+    name = "http_strategy"
     mode = "http"
 
     def __init__(self, settings: Settings) -> None:
@@ -28,8 +28,8 @@ class SessionStrategy:
     async def scrape_site(self, site_config: SiteConfig) -> list[ScrapedListing]:
         site_profile = get_site_profile(site_config, self.settings)
         extractor = ListingExtractor(site_config, site_profile)
-        page_sem = asyncio.Semaphore(self._strategy_concurrency())
-        detail_sem = asyncio.Semaphore(self._detail_concurrency())
+        page_sem = asyncio.Semaphore(self._strategy_concurrency(site_config))
+        detail_sem = asyncio.Semaphore(self._detail_concurrency(site_config))
         today = date.today().isoformat()
 
         async with build_session_client(
@@ -54,7 +54,7 @@ class SessionStrategy:
             )
 
             listings = self._merge_listings(list_pages, site_config=site_config, today=today)
-            if listings and self.settings.scrape_detail_pages and site_config.detail_pages_enabled:
+            if listings and self._should_enrich_details(site_config):
                 await self._enrich_listings(
                     session=session,
                     site_config=site_config,
@@ -73,11 +73,14 @@ class SessionStrategy:
         )
         return listings
 
-    def _strategy_concurrency(self) -> int:
-        return max(1, self.settings.scrape_concurrency)
+    def _should_enrich_details(self, site_config: SiteConfig) -> bool:
+        return bool(getattr(self.settings, "scrape_detail_pages", True) and site_config.detail_pages_enabled)
 
-    def _detail_concurrency(self) -> int:
-        return max(1, min(self._strategy_concurrency(), 4))
+    def _strategy_concurrency(self, site_config: SiteConfig) -> int:
+        return max(1, min(int(getattr(self.settings, "scrape_concurrency", 8)), int(site_config.concurrency)))
+
+    def _detail_concurrency(self, site_config: SiteConfig) -> int:
+        return max(1, min(self._strategy_concurrency(site_config), 4))
 
     def _build_page_url(self, site_config: SiteConfig, page: int) -> str:
         base_url = site_config.base_url
@@ -110,6 +113,7 @@ class SessionStrategy:
             url=outcome.url,
             status_code=outcome.status_code,
             reason=extractor.detect_list_page_issue(outcome.page) if outcome.page is not None else "empty_response",
+            classification=outcome.error_class,
         )
         if outcome.page is None:
             return []
@@ -174,6 +178,7 @@ class SessionStrategy:
             url=outcome.url,
             status_code=outcome.status_code,
             reason=detail_issue,
+            classification=outcome.error_class,
         )
         if outcome.page is None:
             return listing
@@ -231,15 +236,17 @@ class SessionStrategy:
         url: str,
         status_code: int | None,
         reason: str | None,
+        classification: str | None,
     ) -> None:
         if status_code == 404:
             return
-        if status_code in {403, 408, 425, 429, 500, 502, 503, 504}:
+        if status_code in {401, 403, 407, 408, 425, 429, 500, 502, 503, 504}:
             raise StrategyBlockedError(
                 site_name=site_name,
                 mode=self.mode,
                 url=url,
                 reason=f"http_status:{status_code}",
+                classification=classification or "ban",
             )
         if reason:
             raise StrategyBlockedError(
@@ -247,28 +254,34 @@ class SessionStrategy:
                 mode=self.mode,
                 url=url,
                 reason=reason,
+                classification=classification or "parse_error",
             )
 
 
-class ScraplingHttpStrategy(SessionStrategy):
-    name = "scrapling_http"
+class HttpStrategy(SessionStrategy):
+    name = "http_strategy"
     mode = "http"
 
-    def _strategy_concurrency(self) -> int:
-        return max(1, self.settings.scrape_concurrency)
+
+class BrowserStrategy(SessionStrategy):
+    name = "browser_strategy"
+    mode = "browser"
+
+    def _strategy_concurrency(self, site_config: SiteConfig) -> int:
+        ceiling = int(getattr(self.settings, "browser_concurrency", getattr(self.settings, "scrapling_dynamic_concurrency", 2)))
+        return max(1, min(ceiling, int(site_config.concurrency)))
 
 
-class ScraplingDynamicStrategy(SessionStrategy):
-    name = "scrapling_dynamic"
-    mode = "dynamic"
+class AIStrategy(SessionStrategy):
+    name = "ai_strategy"
+    mode = "ai"
 
-    def _strategy_concurrency(self) -> int:
-        return max(1, self.settings.scrapling_dynamic_concurrency)
+    def _strategy_concurrency(self, site_config: SiteConfig) -> int:
+        ceiling = int(getattr(self.settings, "ai_strategy_concurrency", getattr(self.settings, "scrapling_stealth_concurrency", 1)))
+        return max(1, min(ceiling, int(site_config.concurrency)))
 
 
-class ScraplingStealthStrategy(SessionStrategy):
-    name = "scrapling_stealth"
-    mode = "stealth"
+ScraplingHttpStrategy = HttpStrategy
+ScraplingDynamicStrategy = BrowserStrategy
+ScraplingStealthStrategy = AIStrategy
 
-    def _strategy_concurrency(self) -> int:
-        return max(1, self.settings.scrapling_stealth_concurrency)

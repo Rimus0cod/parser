@@ -134,8 +134,14 @@ class ScrapingEngine:
 
     async def scrape_all_sites(self) -> ScrapeExecutionResult:
         enabled_sites = [site for site in self.settings.sites if site.enabled]
+        site_semaphore = asyncio.Semaphore(max(1, int(getattr(self.settings, "scrape_concurrency", 8))))
+
+        async def _bounded_scrape(site_config: SiteConfig) -> ScrapeSiteResult:
+            async with site_semaphore:
+                return await self.scrape_site(site_config)
+
         results = await asyncio.gather(
-            *(self.scrape_site(site) for site in enabled_sites),
+            *(_bounded_scrape(site) for site in enabled_sites),
             return_exceptions=True,
         )
 

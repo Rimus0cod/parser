@@ -1,29 +1,51 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
+import random
+import time
+from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+import httpx
+
+from app.core.logging import get_logger
+from app.scraping.html_adapter import parse_html_document
 
 if TYPE_CHECKING:
     from app.core.config import Settings, SiteConfig
     from app.scraping.site_profiles import SiteProfile
 
 try:
-    from app.scraping.storage import MySQLAdaptiveStorage
-except Exception:  # pragma: no cover - optional dependency path for local imports
-    MySQLAdaptiveStorage = None
-
-try:
-    from scrapling.fetchers import AsyncDynamicSession, AsyncStealthySession, FetcherSession, ProxyRotator
+    from playwright.async_api import (
+        Browser,
+        BrowserContext,
+        Playwright,
+        TimeoutError as PlaywrightTimeoutError,
+        async_playwright,
+    )
 except ImportError:  # pragma: no cover - optional dependency path for local imports
-    AsyncDynamicSession = None
-    AsyncStealthySession = None
-    FetcherSession = None
-    ProxyRotator = None
+    Browser = None
+    BrowserContext = None
+    Playwright = None
+    PlaywrightTimeoutError = TimeoutError
+    async_playwright = None
 
 PageKind = Literal["list", "detail"]
-Mode = Literal["http", "dynamic", "stealth"]
+Mode = Literal["http", "browser", "ai"]
+ModeAlias = Literal["http", "browser", "ai", "dynamic", "stealth"]
+
+MODE_ALIASES: dict[str, Mode] = {
+    "http": "http",
+    "browser": "browser",
+    "ai": "ai",
+    "dynamic": "browser",
+    "stealth": "ai",
+}
+
+logger = get_logger("scraping_fetchers")
 
 
 @dataclass(slots=True)
@@ -31,6 +53,7 @@ class FetchResult:
     page: Any | None
     url: str
     status_code: int | None = None
+    error_class: str | None = None
 
 
 class StrategyBlockedError(RuntimeError):
@@ -41,15 +64,17 @@ class StrategyBlockedError(RuntimeError):
         mode: str,
         url: str,
         reason: str,
+        classification: str = "blocked",
     ) -> None:
         super().__init__(f"{site_name}:{mode}:{reason} ({url})")
         self.site_name = site_name
         self.mode = mode
         self.url = url
         self.reason = reason
+        self.classification = classification
 
 
-class ScraplingSessionClient(AbstractAsyncContextManager["ScraplingSessionClient"]):
+class SessionClient(AbstractAsyncContextManager["SessionClient"]):
     mode: Mode = "http"
 
     def __init__(
@@ -62,24 +87,18 @@ class ScraplingSessionClient(AbstractAsyncContextManager["ScraplingSessionClient
         self.settings = settings
         self.site_config = site_config
         self.site_profile = site_profile
-        self._session: Any | None = None
+        self._rate_limit_lock = asyncio.Lock()
+        self._last_request_at = 0.0
+        self._proxy_cursor = 0
+        self._proxy_failures: dict[str, int] = {}
+        self._rng = random.Random(site_config.name)
 
-    async def __aenter__(self) -> "ScraplingSessionClient":
-        self._session = self._build_session()
-        enter = getattr(self._session, "__aenter__", None)
-        if callable(enter):
-            await self._maybe_await(enter())
+    async def __aenter__(self) -> "SessionClient":
+        await self._open()
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool | None:
-        if self._session is None:
-            return None
-        exit_method = getattr(self._session, "__aexit__", None)
-        if callable(exit_method):
-            return await self._maybe_await(exit_method(exc_type, exc, tb))
-        close = getattr(self._session, "close", None)
-        if callable(close):
-            await self._maybe_await(close())
+        await self._close()
         return None
 
     async def fetch(
@@ -89,17 +108,76 @@ class ScraplingSessionClient(AbstractAsyncContextManager["ScraplingSessionClient
         page_kind: PageKind,
         wait_selector: str = "",
     ) -> FetchResult:
-        if self._session is None:
-            raise RuntimeError("Scrapling session is not initialized.")
-        page = await self._execute_request(url, page_kind=page_kind, wait_selector=wait_selector)
-        return FetchResult(
-            page=page,
-            url=self._page_url(page, fallback=url),
-            status_code=self._status_code(page),
-        )
+        attempts = max(1, int(getattr(self.settings, "scrape_retry_count", 1)))
+        last_error: Exception | None = None
 
-    def _build_session(self) -> Any:
-        raise NotImplementedError
+        for attempt in range(1, attempts + 1):
+            await self._respect_rate_limit()
+            proxy = self._select_proxy()
+
+            try:
+                result = await self._execute_request(
+                    url,
+                    page_kind=page_kind,
+                    wait_selector=wait_selector,
+                    proxy=proxy,
+                )
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                classification = self._classify_exception(exc)
+                if proxy is not None:
+                    self._record_proxy_failure(proxy)
+
+                logger.warning(
+                    "Scrape request failed",
+                    site=self.site_config.name,
+                    mode=self.mode,
+                    page_kind=page_kind,
+                    url=url,
+                    attempt=attempt,
+                    attempts=attempts,
+                    proxy=proxy,
+                    error=str(exc),
+                    classification=classification,
+                )
+                if attempt >= attempts or classification not in {"timeout", "network", "transient"}:
+                    raise
+                await asyncio.sleep(self._backoff_delay(attempt))
+                continue
+
+            if proxy is not None:
+                self._record_proxy_success(proxy)
+
+            result.error_class = result.error_class or self._classify_status(result.status_code)
+            if attempt < attempts and result.status_code in self._retryable_status_codes():
+                logger.warning(
+                    "Retrying scrape request after retryable status",
+                    site=self.site_config.name,
+                    mode=self.mode,
+                    page_kind=page_kind,
+                    url=result.url,
+                    status_code=result.status_code,
+                    attempt=attempt,
+                    attempts=attempts,
+                    proxy=proxy,
+                    classification=result.error_class,
+                )
+                if proxy is not None:
+                    self._record_proxy_failure(proxy)
+                await asyncio.sleep(self._backoff_delay(attempt))
+                continue
+
+            return result
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(f"{self.site_config.name}:{self.mode}:request_failed_without_error")
+
+    async def _open(self) -> None:
+        return None
+
+    async def _close(self) -> None:
+        return None
 
     async def _execute_request(
         self,
@@ -107,189 +185,361 @@ class ScraplingSessionClient(AbstractAsyncContextManager["ScraplingSessionClient
         *,
         page_kind: PageKind,
         wait_selector: str,
-    ) -> Any | None:
+        proxy: str | None,
+    ) -> FetchResult:
         raise NotImplementedError
 
-    def _storage_args(self, target_url: str) -> dict[str, object]:
-        return {
-            "url": target_url,
-            "version": self.site_profile.selector_version,
-            "table_name": self.settings.scrapling_storage_table,
-        }
+    async def _respect_rate_limit(self) -> None:
+        min_delay = float(getattr(self.settings, "scrape_delay_min_seconds", 0.0))
+        max_delay = float(getattr(self.settings, "scrape_delay_max_seconds", min_delay))
+        delay_floor = max(0.0, min(min_delay, max_delay))
+        delay_ceiling = max(delay_floor, max_delay)
+        target_delay = self._rng.uniform(delay_floor, delay_ceiling) if delay_ceiling > 0 else 0.0
 
-    def _adaptive_request_kwargs(self, target_url: str) -> dict[str, object]:
-        kwargs: dict[str, object] = {"adaptive": True}
-        if MySQLAdaptiveStorage is not None:
-            kwargs["storage"] = MySQLAdaptiveStorage
-            kwargs["storage_args"] = self._storage_args(target_url)
-        return kwargs
+        async with self._rate_limit_lock:
+            elapsed = time.monotonic() - self._last_request_at
+            remaining = target_delay - elapsed
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+            self._last_request_at = time.monotonic()
 
-    def _browser_timeout_ms(self) -> int:
-        timeout_seconds = self.site_config.timeout or self.settings.scrape_timeout_seconds
-        return max(
-            1000,
-            self.settings.scrapling_wait_selector_timeout_ms,
-            int(timeout_seconds * 1000),
-        )
+    def _timeout_seconds(self) -> float:
+        return float(self.site_config.timeout or getattr(self.settings, "scrape_timeout_seconds", 30.0))
 
-    def _proxy_rotator(self) -> Any | None:
-        if not self.settings.proxy_enabled or not self.settings.proxy_pool:
+    def _verify_ssl(self) -> bool:
+        global_verify = bool(getattr(self.settings, "scrape_verify_ssl", True))
+        return global_verify and bool(self.site_config.verify_ssl)
+
+    def _backoff_delay(self, attempt: int) -> float:
+        base = float(getattr(self.settings, "scrape_backoff_base_seconds", 1.5))
+        cap = float(getattr(self.settings, "scrape_backoff_cap_seconds", 12.0))
+        return min(cap, base * (2 ** max(0, attempt - 1)))
+
+    def _retryable_status_codes(self) -> set[int]:
+        return {408, 425, 429, 500, 502, 503, 504}
+
+    def _classify_status(self, status_code: int | None) -> str | None:
+        if status_code is None:
             return None
-        if ProxyRotator is None:
-            raise RuntimeError("Scrapling ProxyRotator is unavailable but proxies are enabled.")
-        return ProxyRotator(list(self.settings.proxy_pool))
-
-    def _page_url(self, page: Any, *, fallback: str) -> str:
-        for attr_name in ("url",):
-            value = getattr(page, attr_name, None)
-            if isinstance(value, str) and value:
-                return value
-        return fallback
-
-    def _status_code(self, page: Any) -> int | None:
-        for attr_name in ("status", "status_code"):
-            value = getattr(page, attr_name, None)
-            if isinstance(value, int):
-                return value
+        if status_code in {401, 403, 407, 429}:
+            return "ban"
+        if status_code in {408, 425, 500, 502, 503, 504}:
+            return "timeout"
+        if 400 <= status_code < 500:
+            return "client_error"
+        if status_code >= 500:
+            return "server_error"
         return None
 
-    async def _maybe_await(self, result: Any) -> Any:
+    def _classify_exception(self, exc: Exception) -> str:
+        if isinstance(exc, (httpx.TimeoutException, PlaywrightTimeoutError, TimeoutError)):
+            return "timeout"
+        if isinstance(exc, (httpx.NetworkError, httpx.ProtocolError, httpx.TransportError)):
+            return "network"
+        return "transient" if isinstance(exc, RuntimeError) and "temporar" in str(exc).lower() else "fatal"
+
+    def _headers(self) -> dict[str, str]:
+        user_agents = list(getattr(self.settings, "user_agents", []) or [])
+        if not user_agents:
+            fallback = getattr(self.settings, "user_agent", "")
+            user_agents = [fallback] if fallback else []
+        selected_user_agent = self._rng.choice(user_agents) if user_agents else "Mozilla/5.0"
+
+        return {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,uk;q=0.8,bg;q=0.7",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": selected_user_agent,
+        }
+
+    def _select_proxy(self) -> str | None:
+        if not getattr(self.settings, "proxy_enabled", False):
+            return None
+
+        pool = list(getattr(self.settings, "proxy_pool", []))
+        if not pool:
+            return None
+
+        strategy = getattr(self.settings, "proxy_rotation_strategy", "random")
+        if strategy == "round_robin":
+            proxy = pool[self._proxy_cursor % len(pool)]
+            self._proxy_cursor += 1
+            return proxy
+        if strategy == "failover":
+            return min(pool, key=lambda value: self._proxy_failures.get(value, 0))
+        return self._rng.choice(pool)
+
+    def _record_proxy_failure(self, proxy: str) -> None:
+        self._proxy_failures[proxy] = self._proxy_failures.get(proxy, 0) + 1
+
+    def _record_proxy_success(self, proxy: str) -> None:
+        if proxy in self._proxy_failures:
+            self._proxy_failures[proxy] = max(0, self._proxy_failures[proxy] - 1)
+
+
+class HttpxSessionClient(SessionClient):
+    mode: Mode = "http"
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        site_config: SiteConfig,
+        site_profile: SiteProfile,
+    ) -> None:
+        super().__init__(settings=settings, site_config=site_config, site_profile=site_profile)
+        self._clients: dict[str, httpx.AsyncClient] = {}
+
+    async def _close(self) -> None:
+        for client in self._clients.values():
+            await client.aclose()
+        self._clients.clear()
+
+    async def _execute_request(
+        self,
+        url: str,
+        *,
+        page_kind: PageKind,
+        wait_selector: str,
+        proxy: str | None,
+    ) -> FetchResult:
+        del page_kind, wait_selector
+        client = self._client_for(proxy)
+        response = await client.get(url, headers=self._headers())
+        page = parse_html_document(
+            response.text or "",
+            url=str(response.url),
+            status_code=response.status_code,
+        )
+        return FetchResult(
+            page=page,
+            url=str(response.url),
+            status_code=response.status_code,
+        )
+
+    def _client_for(self, proxy: str | None) -> httpx.AsyncClient:
+        key = proxy or "__direct__"
+        if key in self._clients:
+            return self._clients[key]
+
+        timeout = httpx.Timeout(self._timeout_seconds())
+        limits = httpx.Limits(
+            max_connections=max(1, int(getattr(self.settings, "http_max_connections", 30))),
+            max_keepalive_connections=max(1, int(getattr(self.settings, "http_max_keepalive_connections", 10))),
+        )
+        client = httpx.AsyncClient(
+            follow_redirects=bool(getattr(self.settings, "scrape_follow_redirects", True)),
+            headers=self._headers(),
+            limits=limits,
+            proxy=proxy,
+            timeout=timeout,
+            verify=self._verify_ssl(),
+        )
+        self._clients[key] = client
+        return client
+
+
+class PlaywrightSessionClient(SessionClient):
+    mode: Mode = "browser"
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        site_config: SiteConfig,
+        site_profile: SiteProfile,
+    ) -> None:
+        super().__init__(settings=settings, site_config=site_config, site_profile=site_profile)
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
+
+    async def _open(self) -> None:
+        if async_playwright is None:
+            raise RuntimeError("Playwright is not installed. Browser strategy is unavailable.")
+
+        self._playwright = await async_playwright().start()
+        browser_name = getattr(self.settings, "playwright_browser", "chromium")
+        browser_factory = getattr(self._playwright, browser_name, None)
+        if browser_factory is None:
+            raise RuntimeError(f"Unsupported Playwright browser '{browser_name}'.")
+
+        proxy = self._select_proxy()
+        launch_kwargs: dict[str, object] = {
+            "headless": bool(getattr(self.settings, "browser_headless", True)),
+        }
+        if proxy:
+            launch_kwargs["proxy"] = {"server": proxy}
+        if bool(getattr(self.settings, "browser_stealth", True)):
+            launch_kwargs["args"] = ["--disable-blink-features=AutomationControlled"]
+
+        self._browser = await browser_factory.launch(**launch_kwargs)
+        self._context = await self._browser.new_context(
+            extra_http_headers={"Accept-Language": self._headers()["Accept-Language"]},
+            ignore_https_errors=not self._verify_ssl(),
+            locale="en-US",
+            user_agent=self._headers()["User-Agent"],
+        )
+
+        if bool(getattr(self.settings, "browser_stealth", True)):
+            await self._context.add_init_script(
+                """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.chrome = window.chrome || { runtime: {} };
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
+                """
+            )
+
+    async def _close(self) -> None:
+        if self._context is not None:
+            await self._context.close()
+            self._context = None
+        if self._browser is not None:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright is not None:
+            await self._playwright.stop()
+            self._playwright = None
+
+    async def _execute_request(
+        self,
+        url: str,
+        *,
+        page_kind: PageKind,
+        wait_selector: str,
+        proxy: str | None,
+    ) -> FetchResult:
+        del page_kind, proxy
+        if self._context is None:
+            raise RuntimeError("Playwright browser context is not initialized.")
+
+        page = await self._context.new_page()
+        try:
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=self._browser_timeout_ms())
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(
+                        wait_selector,
+                        state="attached",
+                        timeout=self._browser_timeout_ms(),
+                    )
+                except PlaywrightTimeoutError:
+                    logger.info(
+                        "Browser wait selector timed out; returning current DOM snapshot",
+                        site=self.site_config.name,
+                        mode=self.mode,
+                        url=url,
+                        wait_selector=wait_selector,
+                    )
+            markup = await page.content()
+            final_url = page.url or url
+            status_code = response.status if response is not None else None
+            return FetchResult(
+                page=parse_html_document(markup, url=final_url, status_code=status_code),
+                url=final_url,
+                status_code=status_code,
+            )
+        finally:
+            await page.close()
+
+    def _browser_timeout_ms(self) -> int:
+        return max(1000, int(self._timeout_seconds() * 1000))
+
+
+AISessionHandler = Callable[..., FetchResult | dict[str, Any] | Awaitable[FetchResult | dict[str, Any]]]
+
+
+class AISessionClient(SessionClient):
+    mode: Mode = "ai"
+
+    async def _execute_request(
+        self,
+        url: str,
+        *,
+        page_kind: PageKind,
+        wait_selector: str,
+        proxy: str | None,
+    ) -> FetchResult:
+        del proxy
+        handler = getattr(self.settings, "scrapling_ai_handler", None)
+        if handler is None:
+            raise RuntimeError(
+                "AI strategy requires settings.scrapling_ai_handler and should be used only as an optional fallback."
+            )
+
+        payload = handler(
+            url=url,
+            page_kind=page_kind,
+            wait_selector=wait_selector,
+            site_config=self.site_config,
+            site_profile=self.site_profile,
+        )
+        resolved = await self._maybe_await(payload)
+        if isinstance(resolved, FetchResult):
+            return resolved
+        if not isinstance(resolved, dict):
+            raise RuntimeError("AI strategy handler must return FetchResult or a dict payload.")
+
+        final_url = str(resolved.get("url", url))
+        status_code = resolved.get("status_code")
+        markup = str(resolved.get("html", ""))
+        return FetchResult(
+            page=parse_html_document(markup, url=final_url, status_code=status_code),
+            url=final_url,
+            status_code=status_code if isinstance(status_code, int) else None,
+            error_class="ai_fallback",
+        )
+
+    async def _maybe_await(self, result: object) -> object:
         if inspect.isawaitable(result):
             return await result
         return result
 
 
-class HttpScraplingSession(ScraplingSessionClient):
-    mode: Mode = "http"
-
-    def _build_session(self) -> Any:
-        if FetcherSession is None:
-            raise RuntimeError("Scrapling FetcherSession is not installed.")
-
-        return FetcherSession(
-            impersonate=self.settings.scrapling_http_impersonate,
-            http3=self.settings.scrapling_http3,
-            stealthy_headers=True,
-            follow_redirects=self.settings.scrape_follow_redirects,
-            retries=self.settings.scrape_retry_count,
-            retry_delay=self.settings.scrape_backoff_base_seconds,
-            timeout=self.site_config.timeout or self.settings.scrape_timeout_seconds,
-            proxy_rotator=self._proxy_rotator(),
-        )
-
-    async def _execute_request(
-        self,
-        url: str,
-        *,
-        page_kind: PageKind,
-        wait_selector: str,
-    ) -> Any | None:
-        if self._session is None:
-            return None
-        request = getattr(self._session, "get")
-        result = request(
-            url,
-            **self._adaptive_request_kwargs(url),
-        )
-        return await self._maybe_await(result)
-
-
-class DynamicScraplingSession(ScraplingSessionClient):
-    mode: Mode = "dynamic"
-
-    def _build_session(self) -> Any:
-        if AsyncDynamicSession is None:
-            raise RuntimeError("Scrapling AsyncDynamicSession is not installed.")
-
-        return AsyncDynamicSession(
-            headless=True,
-            disable_resources=self.settings.scrapling_disable_resources,
-            disable_ads=self.settings.scrapling_disable_ads,
-            block_webrtc=self.settings.scrapling_block_webrtc,
-            network_idle=self.settings.scrapling_network_idle,
-            timeout=self._browser_timeout_ms(),
-            proxy=self.settings.proxy_pool[0] if self.settings.proxy_enabled and self.settings.proxy_pool else None,
-        )
-
-    async def _execute_request(
-        self,
-        url: str,
-        *,
-        page_kind: PageKind,
-        wait_selector: str,
-    ) -> Any | None:
-        if self._session is None:
-            return None
-        result = self._session.fetch(
-            url,
-            wait_selector=wait_selector or None,
-            wait_selector_state="attached",
-            timeout=self._browser_timeout_ms(),
-            **self._adaptive_request_kwargs(url),
-        )
-        return await self._maybe_await(result)
-
-
-class StealthScraplingSession(ScraplingSessionClient):
-    mode: Mode = "stealth"
-
-    def _build_session(self) -> Any:
-        if AsyncStealthySession is None:
-            raise RuntimeError("Scrapling AsyncStealthySession is not installed.")
-
-        return AsyncStealthySession(
-            headless=True,
-            disable_resources=self.settings.scrapling_disable_resources,
-            disable_ads=self.settings.scrapling_disable_ads,
-            block_webrtc=self.settings.scrapling_block_webrtc,
-            network_idle=self.settings.scrapling_network_idle,
-            humanize=self.settings.scrapling_stealth_humanize,
-            solve_cloudflare=self.settings.scrapling_solve_cloudflare,
-            timeout=self._browser_timeout_ms(),
-            proxy=self.settings.proxy_pool[0] if self.settings.proxy_enabled and self.settings.proxy_pool else None,
-        )
-
-    async def _execute_request(
-        self,
-        url: str,
-        *,
-        page_kind: PageKind,
-        wait_selector: str,
-    ) -> Any | None:
-        if self._session is None:
-            return None
-        result = self._session.fetch(
-            url,
-            wait_selector=wait_selector or None,
-            wait_selector_state="attached",
-            timeout=self._browser_timeout_ms(),
-            **self._adaptive_request_kwargs(url),
-        )
-        return await self._maybe_await(result)
+def normalize_mode(mode: ModeAlias | str) -> Mode:
+    normalized = MODE_ALIASES.get(mode)
+    if normalized is None:
+        raise KeyError(f"Unsupported scraping mode '{mode}'.")
+    return normalized
 
 
 def build_session_client(
-    mode: Mode,
+    mode: ModeAlias | str,
     *,
     settings: Settings,
     site_config: SiteConfig,
     site_profile: SiteProfile,
-) -> ScraplingSessionClient:
-    session_classes: dict[Mode, type[ScraplingSessionClient]] = {
-        "http": HttpScraplingSession,
-        "dynamic": DynamicScraplingSession,
-        "stealth": StealthScraplingSession,
+) -> SessionClient:
+    normalized_mode = normalize_mode(mode)
+    session_classes: dict[Mode, type[SessionClient]] = {
+        "http": HttpxSessionClient,
+        "browser": PlaywrightSessionClient,
+        "ai": AISessionClient,
     }
-    session_class = session_classes[mode]
+    session_class = session_classes[normalized_mode]
     return session_class(settings=settings, site_config=site_config, site_profile=site_profile)
 
 
+HttpScraplingSession = HttpxSessionClient
+DynamicScraplingSession = PlaywrightSessionClient
+StealthScraplingSession = AISessionClient
+ScraplingSessionClient = SessionClient
+
+
 __all__ = [
+    "AISessionClient",
+    "DynamicScraplingSession",
     "FetchResult",
     "HttpScraplingSession",
-    "DynamicScraplingSession",
-    "StealthScraplingSession",
+    "HttpxSessionClient",
+    "PlaywrightSessionClient",
     "ScraplingSessionClient",
+    "SessionClient",
+    "StealthScraplingSession",
     "StrategyBlockedError",
     "build_session_client",
+    "normalize_mode",
 ]

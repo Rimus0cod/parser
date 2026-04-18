@@ -101,8 +101,8 @@ class ScrapingEngineTests(unittest.TestCase):
                     payload={site.name: [invalid]},
                 ),
                 _FakeStrategy(
-                    name="dynamic_second_pass",
-                    mode="dynamic",
+                    name="browser_second_pass",
+                    mode="browser",
                     payload={site.name: [valid]},
                 ),
             ],
@@ -112,7 +112,7 @@ class ScrapingEngineTests(unittest.TestCase):
             result = await engine.scrape_all_sites()
             self.assertEqual(result.accepted_count, 1)
             self.assertEqual(result.rejected_count, 0)
-            self.assertEqual(result.site_results[0].strategy_name, "dynamic_second_pass")
+            self.assertEqual(result.site_results[0].strategy_name, "browser_second_pass")
 
         asyncio.run(run_test())
 
@@ -149,14 +149,14 @@ class ScrapingEngineTests(unittest.TestCase):
             settings=SimpleNamespace(sites=[site]),
             strategies=[
                 _BlockingStrategy(
-                    name="scrapling_http",
+                    name="http_strategy",
                     mode="http",
                     blocked_sites={site.name},
                     reason="blocked_marker:captcha",
                 ),
                 _FakeStrategy(
-                    name="scrapling_dynamic",
-                    mode="dynamic",
+                    name="browser_strategy",
+                    mode="browser",
                     payload={site.name: [valid]},
                 ),
             ],
@@ -165,8 +165,8 @@ class ScrapingEngineTests(unittest.TestCase):
         async def run_test() -> None:
             result = await engine.scrape_all_sites()
             self.assertEqual(result.accepted_count, 1)
-            self.assertEqual(result.site_results[0].strategy_name, "scrapling_dynamic")
-            self.assertIn("scrapling_http blocked: blocked_marker:captcha", result.site_results[0].errors)
+            self.assertEqual(result.site_results[0].strategy_name, "browser_strategy")
+            self.assertIn("http_strategy blocked: blocked_marker:captcha", result.site_results[0].errors)
 
         asyncio.run(run_test())
 

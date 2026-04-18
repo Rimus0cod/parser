@@ -68,8 +68,8 @@ class SiteConfig(BaseModel):
     enabled: bool = True
     verify_ssl: bool = True
     detail_pages_enabled: bool = True
-    mode_order: list[Literal["http", "dynamic", "stealth"]] = Field(
-        default_factory=lambda: ["http", "dynamic", "stealth"]
+    mode_order: list[Literal["http", "browser", "ai", "dynamic", "stealth"]] = Field(
+        default_factory=lambda: ["http", "browser", "ai"]
     )
     listing_path_keywords: list[str] = Field(default_factory=list)
     allowed_domains: list[str] = Field(default_factory=list)
@@ -223,6 +223,13 @@ class Settings(BaseSettings):
     scrape_detail_pages: bool = True
     http_max_connections: int = 30
     http_max_keepalive_connections: int = 10
+    browser_strategy_enabled: bool = False
+    browser_concurrency: int = 2
+    browser_headless: bool = True
+    browser_stealth: bool = True
+    playwright_browser: Literal["chromium", "firefox", "webkit"] = "chromium"
+    ai_strategy_enabled: bool = False
+    ai_strategy_concurrency: int = 1
     scrapling_dynamic_enabled: bool = False
     scrapling_stealth_enabled: bool = False
     scrapling_dynamic_concurrency: int = 2

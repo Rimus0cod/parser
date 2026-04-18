@@ -27,7 +27,7 @@ class SiteProfilesTests(unittest.TestCase):
 
         profile = get_site_profile(site)
 
-        self.assertEqual(profile.mode_order, ("dynamic", "stealth"))
+        self.assertEqual(profile.mode_order, ("browser", "ai"))
 
 
 if __name__ == "__main__":
