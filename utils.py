@@ -5,7 +5,10 @@ Contains enhanced regular expressions and validation logic.
 
 import re
 import unicodedata
-from typing import List, Optional, Tuple
+from typing import List
+
+BULGARIAN_MOBILE_PREFIXES = ("086", "087", "088", "089", "098", "099")
+BULGARIAN_LANDLINE_PREFIXES = ("02", "03", "04", "05", "06", "07")
 
 
 def normalize_phone_number(phone: str) -> str:
@@ -37,23 +40,23 @@ def normalize_phone_number(phone: str) -> str:
     elif digits_only.startswith("00"):
         digits_only = "+" + digits_only[2:]
 
-    # Convert +359 to 0 for internal storage
+    # Convert Bulgarian international format to national format for internal storage.
     if digits_only.startswith("+359"):
-        digits_only = "0" + digits_only[4:]
+        subscriber_number = digits_only[4:]
+        digits_only = subscriber_number if subscriber_number.startswith("0") else f"0{subscriber_number}"
     elif digits_only.startswith("359"):
-        digits_only = "0" + digits_only[3:]
+        subscriber_number = digits_only[3:]
+        digits_only = subscriber_number if subscriber_number.startswith("0") else f"0{subscriber_number}"
 
     # Validate Bulgarian phone format
-    if digits_only.startswith("0") and len(digits_only) >= 9:
-        # Mobile phones: 087, 088, 089, 098, 099, etc.
-        mobile_prefixes = ["087", "088", "089", "098", "099", "086"]
-        if len(digits_only) == 9 and any(
-            digits_only.startswith(prefix) for prefix in mobile_prefixes
-        ):
-            return digits_only
-        # Landline phones: 02 (Sofia), 032 (Plovdiv), 052 (Varna), etc.
-        elif len(digits_only) >= 9:
-            return digits_only
+    if not digits_only.startswith("0"):
+        return ""
+    if len(set(digits_only)) == 1:
+        return ""
+    if len(digits_only) == 10 and digits_only.startswith(BULGARIAN_MOBILE_PREFIXES):
+        return digits_only
+    if len(digits_only) in {9, 10} and digits_only.startswith(BULGARIAN_LANDLINE_PREFIXES):
+        return digits_only
 
     return ""
 
@@ -112,7 +115,7 @@ def extract_phone_numbers(text: str) -> List[str]:
     for seq in digit_sequences:
         # Try adding '0' prefix if it looks like a Bulgarian number
         if len(seq) == 8 and (
-            seq.startswith(("87", "88", "89", "98", "99")) or seq[0] in "23456789"
+            seq.startswith(("86", "87", "88", "89", "98", "99")) or seq[0] in "23456789"
         ):
             test_phone = "0" + seq
         else:

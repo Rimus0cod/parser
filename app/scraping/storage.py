@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 import mysql.connector
 
@@ -12,17 +12,18 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 try:
-    from scrapling.core.custom_types import AnySelectorElement
     from scrapling.core.storage_adaptors import StorageSystemMixin
-    from scrapling.core.utils import _StorageTools
+    from scrapling.core.utils import _StorageTools  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - optional dependency for local imports
-    AnySelectorElement = Any
-    StorageSystemMixin = object  # type: ignore[assignment]
-    _StorageTools = None
+    StorageSystemMixin = object
+    _StorageTools = None  # type: ignore[assignment,misc]
+
+AnySelectorElement = Any
+StorageSystemMixinBase: Any = StorageSystemMixin
 
 
 @lru_cache(maxsize=None)
-class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
+class MySQLAdaptiveStorage(StorageSystemMixinBase):  # type: ignore[misc]
     def __init__(
         self,
         *,
@@ -32,7 +33,7 @@ class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
         **_: object,
     ) -> None:
         if hasattr(super(), "__init__"):
-            super().__init__(url=url)  # type: ignore[misc]
+            super().__init__(url=url)
         self._url = url or ""
         self._table_name = table_name
         self._version = version
@@ -40,7 +41,11 @@ class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
 
     def _settings(self) -> dict[str, object]:
         settings = get_settings()
-        password = settings.mysql_root_password if settings.mysql_user == "root" else settings.mysql_password
+        password = (
+            settings.mysql_root_password
+            if settings.mysql_user == "root"
+            else settings.mysql_password
+        )
         return {
             "host": settings.mysql_host,
             "port": settings.mysql_port,
@@ -51,7 +56,7 @@ class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
             "use_unicode": True,
         }
 
-    def _connect(self) -> mysql.connector.MySQLConnection:
+    def _connect(self) -> Any:
         return mysql.connector.connect(**self._settings())
 
     def _ensure_schema(self) -> None:
@@ -121,7 +126,7 @@ class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
                     """,
                     (self._url, identifier, self._version),
                 )
-                row = cursor.fetchone()
+                row = cast(Any, cursor.fetchone())
         finally:
             connection.close()
 
@@ -131,8 +136,14 @@ class MySQLAdaptiveStorage(StorageSystemMixin):  # type: ignore[misc]
         payload = row[0]
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode("utf-8")
+        if not isinstance(payload, str):
+            logger.warning(
+                "Unexpected Scrapling adaptive payload type",
+                extra={"target_url": self._url, "identifier": identifier},
+            )
+            return None
         try:
-            return json.loads(payload)
+            return cast(dict[str, Any], json.loads(payload))
         except json.JSONDecodeError:
             logger.warning(
                 "Failed to decode Scrapling adaptive payload",

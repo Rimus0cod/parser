@@ -115,11 +115,17 @@ class _FakeVoiceService:
         self._store = session_store
         self.persist_session_snapshot = AsyncMock()
 
-    async def start_listing_call(self, listing_ad_id: str, initiated_by: str) -> dict:
+    async def start_listing_call(
+        self,
+        listing_ad_id: str,
+        listing_source_site: str | None = None,
+        initiated_by: str = "api",
+    ) -> dict:
         return {
             "id": 1,
             "source_type": "listing",
             "listing_ad_id": listing_ad_id,
+            "listing_source_site": listing_source_site,
             "tenant_contact_id": None,
             "twilio_call_sid": "CA123",
             "contact_name": "Broker",
@@ -159,7 +165,11 @@ class VoiceRouterTests(unittest.TestCase):
         )
 
     def test_create_voice_call_endpoint(self) -> None:
-        payload = VoiceCallCreateRequest(listing_ad_id="A1", initiated_by="ui")
+        payload = VoiceCallCreateRequest(
+            listing_ad_id="A1",
+            listing_source_site="example.com",
+            initiated_by="ui",
+        )
         with (
             patch("app.voice.router.get_voice_service", return_value=self.service),
             patch("app.voice.router.get_settings", return_value=self.settings),
@@ -167,6 +177,7 @@ class VoiceRouterTests(unittest.TestCase):
             result = asyncio.run(create_voice_call(payload))
 
         self.assertEqual(result.listing_ad_id, "A1")
+        self.assertEqual(result.listing_source_site, "example.com")
         self.assertEqual(result.phone_e164, "+359888123456")
 
     def test_start_twiml_contains_stream_play_pause_and_redirect(self) -> None:
@@ -226,7 +237,9 @@ class VoiceRouterTests(unittest.TestCase):
             patch("app.voice.router.get_voice_service", return_value=self.service),
             patch("app.voice.router.get_voice_session_store", return_value=self.store),
             patch("app.voice.router.get_settings", return_value=self.settings),
-            patch("app.voice.router.repository.patch_voice_call", new=AsyncMock()) as patch_voice_call,
+            patch(
+                "app.voice.router.repository.patch_voice_call", new=AsyncMock()
+            ) as patch_voice_call,
         ):
             status_response = asyncio.run(voice_status_callback(status_request, voice_call_id=1))
             recording_response = asyncio.run(

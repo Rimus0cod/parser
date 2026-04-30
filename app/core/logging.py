@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 import structlog
 
@@ -14,10 +15,10 @@ try:
 
     SENTRY_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency path
-    sentry_sdk = None
-    LoggingIntegration = None
-    AioHttpIntegration = None
-    HttpxIntegration = None
+    sentry_sdk = None  # type: ignore[assignment]
+    LoggingIntegration = None  # type: ignore[assignment,misc]
+    AioHttpIntegration = None  # type: ignore[assignment,misc]
+    HttpxIntegration = None  # type: ignore[assignment,misc]
     SENTRY_AVAILABLE = False
 
 
@@ -35,7 +36,7 @@ def configure_logging(
     if debug:
         level = logging.DEBUG
 
-    shared_processors = [
+    shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -84,7 +85,9 @@ def configure_logging(
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
         except OSError as exc:
-            root_logger.warning("File logging is disabled because log directory is not writable: %s", exc)
+            root_logger.warning(
+                "File logging is disabled because log directory is not writable: %s", exc
+            )
 
     if sentry_dsn and SENTRY_AVAILABLE:
         sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
@@ -109,4 +112,4 @@ def capture_exception(exc: BaseException) -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))

@@ -66,8 +66,8 @@ COPY integrations ./integrations
 COPY tts_cache ./tts_cache
 COPY utils.py ./
 
-RUN scrapling install --force \
-    && mkdir -p /app/logs /ms-playwright \
+RUN mkdir -p /app/logs /ms-playwright \
+    && python -m playwright install chromium \
     && chown -R app:app /app /opt/venv /home/app /ms-playwright
 
 USER app

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, cast
 
 import httpx
 
@@ -141,7 +141,7 @@ class AmoCrmIntegration:
                 if "id" in result["add"][0]:
                     lead_id = result["add"][0]["id"]
                     logger.info(f"Successfully created AmoCRM lead with ID: {lead_id}")
-                    return lead_id
+                    return cast(int, lead_id)
                 else:
                     logger.error(f"Lead creation failed: {result}")
                     return None

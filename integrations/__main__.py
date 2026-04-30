@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
-async def test_integrations():
+async def test_integrations() -> None:
     """Test all configured integrations."""
     settings = get_settings()
 
@@ -33,7 +33,7 @@ async def test_integrations():
     # Test Webhooks
     if settings.webhooks.enabled and settings.webhooks.urls:
         logger.info("Testing Webhook integration...")
-        webhook = WebhookIntegration(settings.webhooks)
+        WebhookIntegration(settings.webhooks)
         logger.info(f"Webhook integration configured with {len(settings.webhooks.urls)} URLs")
 
     logger.info("Integration testing completed.")

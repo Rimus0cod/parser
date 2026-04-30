@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -46,16 +47,27 @@ EMPTY_RESULTS_MARKERS: tuple[str, ...] = (
     "not found",
     "обяви не бяха намерени",
 )
-PRICE_RE = re.compile(
-    r"(?P<amount>\d[\d\s.,]{2,})\s*(?P<currency>EUR|BGN|USD|UAH|грн\.?|лв\.?|€|\$)",
+PRICE_AMOUNT_PATTERN = (
+    r"(?:\d{1,3}(?:[\s.]\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+)
+PRICE_SUFFIX_RE = re.compile(
+    rf"(?P<amount>{PRICE_AMOUNT_PATTERN})\s*(?P<currency>EUR|BGN|USD|лв\.?|€|\$)",
     flags=re.I,
 )
+PRICE_PREFIX_RE = re.compile(
+    rf"(?P<currency>EUR|BGN|USD|лв\.?|€|\$)\s*(?P<amount>{PRICE_AMOUNT_PATTERN})",
+    flags=re.I,
+)
+PRICE_RE = PRICE_SUFFIX_RE
 SIZE_RE = re.compile(
-    r"(?P<size>\d+(?:[.,]\d+)?)\s*(?:м²|m²|sqm|sq\.?\s*m|кв\.?\s*м)",
+    r"(?P<size>\d+(?:[.,]\d+)?)\s*(?:м²|м2|m²|m2|sqm|sq\.?\s*m|кв\.?\s*м)",
     flags=re.I,
 )
+BULGARIAN_MOBILE_PREFIXES: tuple[str, ...] = ("086", "087", "088", "089", "098", "099")
+BULGARIAN_LANDLINE_PREFIXES: tuple[str, ...] = ("02", "03", "04", "05", "06", "07")
 PHONE_RE = re.compile(
-    r"(?:\+?359[\s-]?\d[\d\s-]{7,12}|\+?380[\s-]?\d[\d\s-]{8,12}|0\d[\d\s-]{7,11})"
+    r"(?:(?:\+|00)?359[\s().-]*(?:0[\s().-]*)?\d(?:[\s().-]*\d){7,8}|"
+    r"0\d(?:[\s().-]*\d){7,8})"
 )
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", flags=re.I)
 CONTACT_SECTION_SELECTORS: tuple[str, ...] = (
@@ -141,12 +153,21 @@ class SelectorContext:
         return f"{self.site_name}:{self.selector_version}:{self.page_type}:{field_name}"
 
 
+@dataclass(slots=True, frozen=True)
+class PriceParts:
+    raw: str
+    amount: Decimal | None
+    currency: str
+
+
 class ListingExtractor:
     def __init__(self, site_config: SiteConfig, site_profile: SiteProfile | None = None) -> None:
         self.site_config = site_config
         self.site_profile = site_profile
         self.selector_version = (
-            site_profile.selector_version if site_profile is not None else site_config.selector_version
+            site_profile.selector_version
+            if site_profile is not None
+            else site_config.selector_version
         )
 
     def detect_list_page_issue(self, page: Any) -> str | None:
@@ -215,18 +236,25 @@ class ListingExtractor:
         raw_text = self._node_text(page)
         contact_sections = self._detail_contact_sections(page)
 
-        phone = self._extract_phone_from_sections(contact_sections) or self._extract_phone_from_text(raw_text)
+        phone = self._extract_phone_from_sections(
+            contact_sections
+        ) or self._extract_phone_from_text(raw_text)
         if phone:
             listing.phone = phone
 
-        email = self._extract_email_from_sections(contact_sections) or self._extract_email_from_text(raw_text)
+        email = self._extract_email_from_sections(
+            contact_sections
+        ) or self._extract_email_from_text(raw_text)
         if email:
             listing.contact_email = email
 
         if not listing.location:
             listing.location = self._extract_location(raw_text)
+            listing.location_raw = listing.location
         if not listing.size:
             listing.size = self._extract_size(raw_text)
+            listing.size_raw = listing.size
+            listing.area_m2 = self._extract_area_m2(raw_text)
         if not listing.contact_name or listing.contact_name == "-":
             listing.contact_name = self.seller_or_contact_name(
                 raw_text,
@@ -256,7 +284,9 @@ class ListingExtractor:
 
     def _collect_cards(self, page: Any, context: SelectorContext) -> list[Any]:
         card_selector = self.site_config.selectors.get("card", "article, li, section, div")
-        first_card = self._css_first(page, card_selector, identifier=context.identifier("card_first"))
+        first_card = self._css_first(
+            page, card_selector, identifier=context.identifier("card_first")
+        )
         cards: list[Any] = []
         if first_card is not None:
             cards.append(first_card)
@@ -308,24 +338,38 @@ class ListingExtractor:
             return None
 
         seller_name = self._clean_text(self._node_text(seller_el) if seller_el is not None else "")
+        price_text = self._field_text(card, "price") or card_text
+        location_text = self._field_text(card, "location") or card_text
+        size_text = self._field_text(card, "size") or card_text
+        price_parts = self._extract_price_parts(price_text)
+        location = self._extract_location(location_text)
+        size = self._extract_size(size_text)
         return ScrapedListing(
             ad_id=self._extract_ad_id(link),
             title=title,
-            price=self._extract_price(card_text),
-            location=self._extract_location(card_text),
-            size=self._extract_size(card_text),
+            price=price_parts.raw,
+            location=location,
+            size=size,
             link=link,
             image_url=self._extract_image(card, base_url),
             source_site=self.site_config.name,
             seller_name=seller_name,
             ad_type=self._detect_ad_type(seller_name),
+            price_raw=price_parts.raw,
+            price_amount=price_parts.amount,
+            currency=price_parts.currency,
+            location_raw=location,
+            size_raw=size,
+            area_m2=self._extract_area_m2(size_text),
         )
 
     def _css_first(self, node: Any, selector: str, *, identifier: str) -> Any | None:
         if not selector:
             return None
         try:
-            result = node.css_first(selector, identifier=identifier, auto_save=True, auto_match=True)
+            result = node.css_first(
+                selector, identifier=identifier, auto_save=True, auto_match=True
+            )
             if result is not None:
                 return result
         except TypeError:
@@ -344,7 +388,12 @@ class ListingExtractor:
         if not selector:
             return True
         try:
-            if self._css_first(node, selector, identifier=f"{self.site_config.name}:probe:{selector}") is not None:
+            if (
+                self._css_first(
+                    node, selector, identifier=f"{self.site_config.name}:probe:{selector}"
+                )
+                is not None
+            ):
                 return True
         except Exception:
             return False
@@ -404,7 +453,19 @@ class ListingExtractor:
 
     def _card_signature(self, card: Any) -> str:
         text = self._node_text(card)
-        return hashlib.sha256(text[:500].encode("utf-8")).hexdigest()
+        link_hints = " ".join(
+            self._node_attr(link, "href") for link in self._css_all(card, "a[href]")[:3]
+        )
+        return hashlib.sha256(f"{link_hints}::{text[:500]}".encode("utf-8")).hexdigest()
+
+    def _field_text(self, card: Any, field_name: str) -> str:
+        selector = self.site_config.selectors.get(field_name, "")
+        if not selector:
+            return ""
+        node = self._css_first(
+            card, selector, identifier=f"{self.site_config.name}:field:{field_name}"
+        )
+        return self._node_text(node) if node is not None else ""
 
     def _find_by_regex_text(self, page: Any, pattern: re.Pattern[str]) -> str:
         try:
@@ -436,11 +497,20 @@ class ListingExtractor:
             cleaned = f"+{cleaned.replace('+', '')}"
         if "+" in cleaned and not cleaned.startswith("+"):
             cleaned = f"+{cleaned.replace('+', '')}"
+        if cleaned.startswith("00"):
+            cleaned = f"+{cleaned[2:]}"
+        if cleaned.startswith("359"):
+            cleaned = f"+{cleaned}"
+        if cleaned.startswith("+3590"):
+            cleaned = f"+359{cleaned[5:]}"
         return cleaned[:20]
 
     def _link_looks_like_listing(self, link: str) -> bool:
         parsed = urlparse(link)
-        if self.site_config.allowed_domains and parsed.netloc not in self.site_config.allowed_domains:
+        if (
+            self.site_config.allowed_domains
+            and parsed.netloc not in self.site_config.allowed_domains
+        ):
             return False
         if self.site_config.listing_path_keywords:
             return any(keyword in parsed.path for keyword in self.site_config.listing_path_keywords)
@@ -450,7 +520,7 @@ class ListingExtractor:
     def _looks_like_property_block(self, title: str, card_text: str) -> bool:
         normalized = f"{title} {card_text}".lower()
         has_keyword = any(word in normalized for word in APARTMENT_KEYWORDS)
-        has_price = PRICE_RE.search(card_text) is not None
+        has_price = self._search_price(card_text) is not None
         has_size = SIZE_RE.search(card_text) is not None
         has_rooms = any(token in normalized for token in ("кімнат", "комнат", "стаен", "room"))
         has_negative = any(word in normalized for word in NEGATIVE_TITLE_KEYWORDS)
@@ -470,16 +540,66 @@ class ListingExtractor:
         return hashlib.sha256(link.encode("utf-8")).hexdigest()[:24]
 
     def _extract_price(self, text: str) -> str:
-        match = PRICE_RE.search(text)
+        return self._extract_price_parts(text).raw
+
+    def _extract_price_parts(self, text: str) -> PriceParts:
+        match = self._search_price(text)
         if not match:
-            return ""
+            return PriceParts(raw="", amount=None, currency="")
         amount = re.sub(r"\s+", " ", match.group("amount")).strip()
-        currency = match.group("currency").upper().replace("ГРН.", "ГРН").replace("ЛВ.", "ЛВ")
-        return f"{amount} {currency}"
+        currency = self._normalize_currency(match.group("currency"))
+        return PriceParts(
+            raw=f"{amount} {currency}",
+            amount=self._parse_decimal_amount(amount),
+            currency=currency,
+        )
+
+    def _search_price(self, text: str) -> re.Match[str] | None:
+        return PRICE_SUFFIX_RE.search(text or "") or PRICE_PREFIX_RE.search(text or "")
+
+    def _normalize_currency(self, value: str) -> str:
+        normalized = value.strip().lower().rstrip(".")
+        if normalized in {"€", "eur"}:
+            return "EUR"
+        if normalized in {"$", "usd"}:
+            return "USD"
+        if normalized in {"лв", "bgn"}:
+            return "BGN"
+        return value.strip().upper()
+
+    def _parse_decimal_amount(self, value: str) -> Decimal | None:
+        compact = re.sub(r"\s+", "", value or "")
+        if not compact:
+            return None
+
+        comma_count = compact.count(",")
+        dot_count = compact.count(".")
+        if comma_count and dot_count:
+            decimal_separator = "," if compact.rfind(",") > compact.rfind(".") else "."
+            thousands_separator = "." if decimal_separator == "," else ","
+            compact = compact.replace(thousands_separator, "").replace(decimal_separator, ".")
+        elif comma_count == 1 and len(compact.rsplit(",", 1)[-1]) in {1, 2}:
+            compact = compact.replace(",", ".")
+        else:
+            compact = compact.replace(",", "").replace(".", "")
+
+        try:
+            return Decimal(compact)
+        except InvalidOperation:
+            return None
 
     def _extract_size(self, text: str) -> str:
         match = SIZE_RE.search(text)
         return f"{match.group('size')} м²" if match else ""
+
+    def _extract_area_m2(self, text: str) -> Decimal | None:
+        match = SIZE_RE.search(text)
+        if not match:
+            return None
+        try:
+            return Decimal(match.group("size").replace(",", "."))
+        except InvalidOperation:
+            return None
 
     def _extract_location(self, text: str) -> str:
         compact = self._clean_text(text)
@@ -489,8 +609,8 @@ class ListingExtractor:
         )
         if location_match:
             candidate = self._clean_text(location_match.group(1))
-            candidate = re.sub(r"^(?:EUR|BGN|USD|UAH|грн\.?|лв\.?)\s+", "", candidate, flags=re.I)
-            if not PRICE_RE.search(candidate) and not SIZE_RE.search(candidate):
+            candidate = re.sub(r"^(?:EUR|BGN|USD|лв\.?)\s+", "", candidate, flags=re.I)
+            if not self._search_price(candidate) and not SIZE_RE.search(candidate):
                 return candidate[:180]
 
         chunks = [self._clean_text(chunk) for chunk in re.split(r"[\n|]+", text)]
@@ -498,7 +618,7 @@ class ListingExtractor:
             if len(chunk) < 3:
                 continue
             if any(token in chunk for token in (" · ", ", ")):
-                if PRICE_RE.search(chunk) or SIZE_RE.search(chunk):
+                if self._search_price(chunk) or SIZE_RE.search(chunk):
                     continue
                 return chunk[:180]
         return ""
@@ -518,7 +638,11 @@ class ListingExtractor:
 
     def _guess_contact_name(self, text: str) -> str:
         chunks = [chunk.strip() for chunk in re.split(r"[\n|;]+", text) if chunk.strip()]
-        prioritized = [chunk for chunk in chunks if any(keyword in chunk.lower() for keyword in CONTACT_KEYWORDS)]
+        prioritized = [
+            chunk
+            for chunk in chunks
+            if any(keyword in chunk.lower() for keyword in CONTACT_KEYWORDS)
+        ]
         for chunk in prioritized[:15]:
             candidate = self._extract_name_from_text(chunk)
             if candidate:
@@ -529,7 +653,11 @@ class ListingExtractor:
         selectors = tuple(
             dict.fromkeys(
                 [
-                    *(self.site_profile.detail_contact_selectors if self.site_profile is not None else ()),
+                    *(
+                        self.site_profile.detail_contact_selectors
+                        if self.site_profile is not None
+                        else ()
+                    ),
                     *CONTACT_SECTION_SELECTORS,
                 ]
             )
@@ -561,7 +689,7 @@ class ListingExtractor:
 
     def _node_looks_like_contact_block(self, node: Any) -> bool:
         text = self._node_text(node)
-        if PHONE_RE.search(text) or EMAIL_RE.search(text):
+        if self._extract_phone_from_text(text) or EMAIL_RE.search(text):
             return True
 
         lowered = text.lower()
@@ -607,12 +735,40 @@ class ListingExtractor:
         if not digits:
             return False
 
-        min_length = 10 if self.site_config.name in {"dom.ria.com", "olx.ua", "lun.ua"} else 9
-        if len(digits) < min_length or len(digits) > 15:
+        national_number = self._to_bulgarian_national_number(digits)
+        if not national_number:
             return False
-        if len(set(digits)) == 1:
+        if len(set(national_number)) == 1:
             return False
-        return True
+        return self._is_valid_bulgarian_mobile(
+            national_number
+        ) or self._is_valid_bulgarian_landline(national_number)
+
+    def _to_bulgarian_national_number(self, digits: str) -> str:
+        if digits.startswith("00359"):
+            digits = digits[5:]
+        elif digits.startswith("359"):
+            digits = digits[3:]
+        elif digits.startswith("0"):
+            return digits if 9 <= len(digits) <= 10 else ""
+        else:
+            return ""
+
+        if digits.startswith("0"):
+            national_number = digits
+        else:
+            national_number = f"0{digits}"
+        return national_number if 9 <= len(national_number) <= 10 else ""
+
+    def _is_valid_bulgarian_mobile(self, national_number: str) -> bool:
+        return len(national_number) == 10 and national_number.startswith(
+            BULGARIAN_MOBILE_PREFIXES
+        )
+
+    def _is_valid_bulgarian_landline(self, national_number: str) -> bool:
+        return len(national_number) in {9, 10} and national_number.startswith(
+            BULGARIAN_LANDLINE_PREFIXES
+        )
 
     def _extract_email_from_sections(self, sections: list[Any]) -> str:
         for section in sections:

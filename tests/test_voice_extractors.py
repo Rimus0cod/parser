@@ -8,7 +8,9 @@ from app.voice.extractors import extract_answers, next_question
 class VoiceExtractorTests(unittest.TestCase):
     def test_extracts_price_and_negotiation(self) -> None:
         self.assertEqual(extract_answers("900 евро", {}, "price")["price"], "900 евро")
-        negotiation = extract_answers("Да, може да се коментира.", {"price": "900 евро"}, "negotiation")
+        negotiation = extract_answers(
+            "Да, може да се коментира.", {"price": "900 евро"}, "negotiation"
+        )
         self.assertIn("negotiation", negotiation)
 
     def test_falls_back_to_current_question_text(self) -> None:

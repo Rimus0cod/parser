@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -46,8 +45,16 @@ class WebhookIntegration:
                 "ad_id": listing.ad_id,
                 "title": listing.title,
                 "price": listing.price,
+                "price_raw": listing.price_raw,
+                "price_amount": str(listing.price_amount)
+                if listing.price_amount is not None
+                else None,
+                "currency": listing.currency,
                 "location": listing.location,
+                "location_raw": listing.location_raw,
                 "size": listing.size,
+                "size_raw": listing.size_raw,
+                "area_m2": str(listing.area_m2) if listing.area_m2 is not None else None,
                 "link": listing.link,
                 "source_site": listing.source_site,
                 "phone": listing.phone,
@@ -65,7 +72,7 @@ class WebhookIntegration:
 
         success_results = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Error sending to webhook {self.config.urls[i]}: {result}")
                 success_results.append(False)
             else:
@@ -87,8 +94,16 @@ class WebhookIntegration:
                     "ad_id": listing.ad_id,
                     "title": listing.title,
                     "price": listing.price,
+                    "price_raw": listing.price_raw,
+                    "price_amount": str(listing.price_amount)
+                    if listing.price_amount is not None
+                    else None,
+                    "currency": listing.currency,
                     "location": listing.location,
+                    "location_raw": listing.location_raw,
                     "size": listing.size,
+                    "size_raw": listing.size_raw,
+                    "area_m2": str(listing.area_m2) if listing.area_m2 is not None else None,
                     "link": listing.link,
                     "source_site": listing.source_site,
                     "phone": listing.phone,
@@ -108,7 +123,7 @@ class WebhookIntegration:
 
         success_results = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Error sending to webhook {self.config.urls[i]}: {result}")
                 success_results.append(False)
             else:

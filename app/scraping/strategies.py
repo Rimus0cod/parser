@@ -74,10 +74,15 @@ class SessionStrategy:
         return listings
 
     def _should_enrich_details(self, site_config: SiteConfig) -> bool:
-        return bool(getattr(self.settings, "scrape_detail_pages", True) and site_config.detail_pages_enabled)
+        return bool(
+            getattr(self.settings, "scrape_detail_pages", True) and site_config.detail_pages_enabled
+        )
 
     def _strategy_concurrency(self, site_config: SiteConfig) -> int:
-        return max(1, min(int(getattr(self.settings, "scrape_concurrency", 8)), int(site_config.concurrency)))
+        return max(
+            1,
+            min(int(getattr(self.settings, "scrape_concurrency", 8)), int(site_config.concurrency)),
+        )
 
     def _detail_concurrency(self, site_config: SiteConfig) -> int:
         return max(1, min(self._strategy_concurrency(site_config), 4))
@@ -112,7 +117,9 @@ class SessionStrategy:
             site_name=site_config.name,
             url=outcome.url,
             status_code=outcome.status_code,
-            reason=extractor.detect_list_page_issue(outcome.page) if outcome.page is not None else "empty_response",
+            reason=extractor.detect_list_page_issue(outcome.page)
+            if outcome.page is not None
+            else "empty_response",
             classification=outcome.error_class,
         )
         if outcome.page is None:
@@ -172,7 +179,11 @@ class SessionStrategy:
                 wait_selector=site_profile.detail_wait_selector,
             )
 
-        detail_issue = extractor.detect_detail_page_issue(outcome.page) if outcome.page is not None else "empty_response"
+        detail_issue = (
+            extractor.detect_detail_page_issue(outcome.page)
+            if outcome.page is not None
+            else "empty_response"
+        )
         self._raise_for_transport_or_block(
             site_name=site_config.name,
             url=outcome.url,
@@ -207,7 +218,7 @@ class SessionStrategy:
             if isinstance(result, StrategyBlockedError):
                 blocked_error = result
                 continue
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(
                     "List page scrape failed",
                     site=site_config.name,
@@ -217,7 +228,8 @@ class SessionStrategy:
                 )
                 continue
             for listing in result:
-                dedupe_key = f"{site_config.name}:{listing.ad_id}"
+                listing.source_site = listing.source_site or site_config.name
+                dedupe_key = listing.identity.storage_key
                 if dedupe_key in seen:
                     continue
                 listing.date_seen = today
@@ -268,7 +280,13 @@ class BrowserStrategy(SessionStrategy):
     mode = "browser"
 
     def _strategy_concurrency(self, site_config: SiteConfig) -> int:
-        ceiling = int(getattr(self.settings, "browser_concurrency", getattr(self.settings, "scrapling_dynamic_concurrency", 2)))
+        ceiling = int(
+            getattr(
+                self.settings,
+                "browser_concurrency",
+                getattr(self.settings, "scrapling_dynamic_concurrency", 2),
+            )
+        )
         return max(1, min(ceiling, int(site_config.concurrency)))
 
 
@@ -277,11 +295,22 @@ class AIStrategy(SessionStrategy):
     mode = "ai"
 
     def _strategy_concurrency(self, site_config: SiteConfig) -> int:
-        ceiling = int(getattr(self.settings, "ai_strategy_concurrency", getattr(self.settings, "scrapling_stealth_concurrency", 1)))
+        ceiling = int(
+            getattr(
+                self.settings,
+                "ai_strategy_concurrency",
+                getattr(self.settings, "scrapling_stealth_concurrency", 1),
+            )
+        )
         return max(1, min(ceiling, int(site_config.concurrency)))
 
 
+HttpSessionStrategy = HttpStrategy
+DynamicBrowserStrategy = BrowserStrategy
+AIHandlerStrategy = AIStrategy
+
+# Backward-compatible names for older settings/imports. The active implementations
+# are httpx, Playwright, and an injected AI handler.
 ScraplingHttpStrategy = HttpStrategy
 ScraplingDynamicStrategy = BrowserStrategy
 ScraplingStealthStrategy = AIStrategy
-

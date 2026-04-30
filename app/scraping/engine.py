@@ -38,7 +38,9 @@ class ScrapingEngine:
     async def scrape_site(self, site_config: SiteConfig) -> ScrapeSiteResult:
         site_errors: list[str] = []
 
-        supported_strategies = [strategy for strategy in self.strategies if strategy.supports(site_config)]
+        supported_strategies = [
+            strategy for strategy in self.strategies if strategy.supports(site_config)
+        ]
         if not supported_strategies:
             return ScrapeSiteResult(
                 site_name=site_config.name,
@@ -134,7 +136,9 @@ class ScrapingEngine:
 
     async def scrape_all_sites(self) -> ScrapeExecutionResult:
         enabled_sites = [site for site in self.settings.sites if site.enabled]
-        site_semaphore = asyncio.Semaphore(max(1, int(getattr(self.settings, "scrape_concurrency", 8))))
+        site_semaphore = asyncio.Semaphore(
+            max(1, int(getattr(self.settings, "scrape_concurrency", 8)))
+        )
 
         async def _bounded_scrape(site_config: SiteConfig) -> ScrapeSiteResult:
             async with site_semaphore:
@@ -150,7 +154,7 @@ class ScrapingEngine:
         deduplicated: dict[str, ListingEnvelope] = {}
 
         for site_config, result in zip(enabled_sites, results, strict=False):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 message = f"{site_config.name} failed: {result}"
                 execution_errors.append(message)
                 logger.exception("Site scrape crashed", site=site_config.name, error=str(result))
@@ -191,5 +195,4 @@ class ScrapingEngine:
         )
 
     def _dedupe_key(self, listing: ScrapedListing) -> str:
-        site = (listing.source_site or "").strip().lower()
-        return f"{site}:{listing.ad_id}"
+        return listing.identity.storage_key

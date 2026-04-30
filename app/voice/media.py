@@ -6,14 +6,14 @@ import json
 import os
 import queue
 import threading
-from typing import Any
+from typing import Any, cast
 
 from app.core.logging import get_logger
 
 try:
     from google.cloud import speech
 except ImportError:  # pragma: no cover - optional dependency path
-    speech = None
+    speech = None  # type: ignore[assignment]
 
 logger = get_logger("voice.media")
 
@@ -98,13 +98,14 @@ class SpeechRecognitionManager:
             )
 
             def request_generator() -> Any:
+                yield speech.StreamingRecognizeRequest(streaming_config=streaming_config)
                 while True:
                     chunk = audio_queue.get()
                     if chunk is None:
                         break
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-            responses = client.streaming_recognize(streaming_config, request_generator())
+            responses = client.streaming_recognize(requests=request_generator())
             for response in responses:
                 for result in response.results:
                     if not result.alternatives:
@@ -127,8 +128,8 @@ async def handle_media_message(
 
     if event == "start":
         start_payload = payload.get("start", {})
-        call_sid = start_payload.get("callSid")
-        stream_sid = start_payload.get("streamSid")
+        call_sid = cast(str | None, start_payload.get("callSid"))
+        stream_sid = cast(str | None, start_payload.get("streamSid"))
         custom_parameters = start_payload.get("customParameters") or {}
         if not call_sid:
             return None
@@ -143,7 +144,9 @@ async def handle_media_message(
 
     if event == "media":
         media_payload = payload.get("media", {})
-        call_sid = media_payload.get("callSid") or manager.call_sid_for_stream(payload.get("streamSid"))
+        call_sid = cast(str | None, media_payload.get("callSid")) or manager.call_sid_for_stream(
+            cast(str | None, payload.get("streamSid"))
+        )
         track = media_payload.get("track")
         if track and track != "inbound":
             return None
@@ -156,7 +159,9 @@ async def handle_media_message(
 
     if event == "stop":
         stop_payload = payload.get("stop", {})
-        call_sid = stop_payload.get("callSid") or manager.call_sid_for_stream(payload.get("streamSid"))
+        call_sid = cast(str | None, stop_payload.get("callSid")) or manager.call_sid_for_stream(
+            cast(str | None, payload.get("streamSid"))
+        )
         if call_sid:
             manager.stop_stream(call_sid)
         return call_sid

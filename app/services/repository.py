@@ -3,27 +3,73 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import get_settings
 from app.db.mysql import mysql_pool
 
 if TYPE_CHECKING:
-    from app.scraping.contracts import ScrapeExecutionResult, ScrapeSiteResult
+    from app.scraping.contracts import ListingEnvelope, ScrapeExecutionResult, ScrapeSiteResult
     from app.scraping.models import ScrapedListing
 
 logger = logging.getLogger(__name__)
 _MISSING = object()
 LISTING_STATUS_ACTIVE = "active"
+LISTING_STATUS_MANUAL_REVIEW = "manual_review"
 LISTING_STATUS_STALE = "stale"
+LISTING_STATUS_REJECTED = "rejected"
 STALE_STRATEGIES = {"mark", "delete"}
+VISIBLE_LISTING_COLUMNS = """
+    ad_id, date_seen, title, price, location, size, link, source_site,
+    parser_version, record_status, phone, seller_name, ad_type, contact_name,
+    contact_email, price_raw, price_amount, currency, location_raw, size_raw,
+    area_m2, updated_at
+"""
+VISIBLE_LISTING_KEYS = [
+    "ad_id",
+    "date_seen",
+    "title",
+    "price",
+    "location",
+    "size",
+    "link",
+    "source_site",
+    "parser_version",
+    "record_status",
+    "phone",
+    "seller_name",
+    "ad_type",
+    "contact_name",
+    "contact_email",
+    "price_raw",
+    "price_amount",
+    "currency",
+    "location_raw",
+    "size_raw",
+    "area_m2",
+    "updated_at",
+]
 
 
 def _current_parser_version() -> str:
     return get_settings().scrape_data_version.strip() or "v2"
 
 
-def _normalize_listing(row: "ScrapedListing", *, default_site: str | None = None) -> "ScrapedListing | None":
+def _optional_decimal(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _normalize_listing(
+    row: "ScrapedListing", *, default_site: str | None = None
+) -> "ScrapedListing | None":
     from app.scraping.models import ScrapedListing
 
     ad_id = str(row.ad_id or "").strip()
@@ -37,7 +83,8 @@ def _normalize_listing(row: "ScrapedListing", *, default_site: str | None = None
 
     return ScrapedListing(
         ad_id=ad_id,
-        date_seen=str(row.date_seen or date.today().isoformat()).strip() or date.today().isoformat(),
+        date_seen=str(row.date_seen or date.today().isoformat()).strip()
+        or date.today().isoformat(),
         title=str(row.title or "").strip(),
         price=str(row.price or "").strip(),
         location=str(row.location or "").strip(),
@@ -50,36 +97,72 @@ def _normalize_listing(row: "ScrapedListing", *, default_site: str | None = None
         ad_type=str(row.ad_type or "").strip(),
         contact_name=str(row.contact_name or "").strip() or "-",
         contact_email=str(row.contact_email or "").strip() or "-",
+        price_raw=str(row.price_raw or row.price or "").strip(),
+        price_amount=_optional_decimal(row.price_amount),
+        currency=str(row.currency or "").strip().upper(),
+        location_raw=str(row.location_raw or row.location or "").strip(),
+        size_raw=str(row.size_raw or row.size or "").strip(),
+        area_m2=_optional_decimal(row.area_m2),
     )
 
 
-def _to_listing_rows(rows: list["ScrapedListing"], *, parser_version: str) -> list[tuple[str, ...]]:
-    normalized_rows: list[tuple[str, ...]] = []
+def _listing_row_values(
+    normalized: "ScrapedListing",
+    *,
+    parser_version: str,
+    record_status: str,
+) -> tuple[Any, ...]:
+    return (
+        normalized.ad_id,
+        normalized.date_seen,
+        normalized.title,
+        normalized.price,
+        normalized.location,
+        normalized.size,
+        normalized.link,
+        normalized.source_site,
+        parser_version.strip() or _current_parser_version(),
+        record_status,
+        normalized.phone,
+        normalized.seller_name,
+        normalized.ad_type,
+        normalized.contact_name,
+        normalized.contact_email,
+        normalized.price_raw or normalized.price,
+        normalized.price_amount,
+        normalized.currency,
+        normalized.location_raw or normalized.location,
+        normalized.size_raw or normalized.size,
+        normalized.area_m2,
+    )
+
+
+def _to_listing_rows(
+    rows: list["ScrapedListing"],
+    *,
+    parser_version: str,
+    record_status: str = LISTING_STATUS_ACTIVE,
+) -> list[tuple[Any, ...]]:
+    normalized_rows: list[tuple[Any, ...]] = []
     active_parser_version = parser_version.strip() or _current_parser_version()
     for row in rows:
         normalized = _normalize_listing(row)
         if normalized is None:
             continue
         normalized_rows.append(
-            (
-                normalized.ad_id,
-                normalized.date_seen,
-                normalized.title,
-                normalized.price,
-                normalized.location,
-                normalized.size,
-                normalized.link,
-                normalized.source_site,
-                active_parser_version,
-                LISTING_STATUS_ACTIVE,
-                normalized.phone,
-                normalized.seller_name,
-                normalized.ad_type,
-                normalized.contact_name,
-                normalized.contact_email,
+            _listing_row_values(
+                normalized,
+                parser_version=active_parser_version,
+                record_status=record_status,
             )
         )
     return normalized_rows
+
+
+def _envelope_record_status(envelope: "ListingEnvelope") -> str:
+    if envelope.fallback_action == "manual_review":
+        return LISTING_STATUS_MANUAL_REVIEW
+    return LISTING_STATUS_ACTIVE
 
 
 def _site_scrape_completed(result: "ScrapeSiteResult") -> bool:
@@ -100,16 +183,23 @@ async def upsert_leads(rows: list["ScrapedListing"], *, parser_version: str | No
     if not rows:
         return 0
 
-    active_parser_version = (parser_version or _current_parser_version()).strip() or _current_parser_version()
+    active_parser_version = (
+        parser_version or _current_parser_version()
+    ).strip() or _current_parser_version()
     values = _to_listing_rows(rows, parser_version=active_parser_version)
+    return await _upsert_listing_values(values)
+
+
+async def _upsert_listing_values(values: list[tuple[Any, ...]]) -> int:
     if not values:
         return 0
 
     sql = """
     INSERT INTO listings (
         ad_id, date_seen, title, price, location, size, link, source_site,
-        parser_version, record_status, phone, seller_name, ad_type, contact_name, contact_email
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        parser_version, record_status, phone, seller_name, ad_type, contact_name, contact_email,
+        price_raw, price_amount, currency, location_raw, size_raw, area_m2
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
         date_seen = VALUES(date_seen),
         title = VALUES(title),
@@ -124,7 +214,13 @@ async def upsert_leads(rows: list["ScrapedListing"], *, parser_version: str | No
         seller_name = VALUES(seller_name),
         ad_type = VALUES(ad_type),
         contact_name = VALUES(contact_name),
-        contact_email = VALUES(contact_email)
+        contact_email = VALUES(contact_email),
+        price_raw = VALUES(price_raw),
+        price_amount = VALUES(price_amount),
+        currency = VALUES(currency),
+        location_raw = VALUES(location_raw),
+        size_raw = VALUES(size_raw),
+        area_m2 = VALUES(area_m2)
     """
 
     async with mysql_pool() as pool:
@@ -140,7 +236,9 @@ async def refresh_leads(
     parser_version: str | None = None,
     stale_strategy: str = "mark",
 ) -> int:
-    active_parser_version = (parser_version or _current_parser_version()).strip() or _current_parser_version()
+    active_parser_version = (
+        parser_version or _current_parser_version()
+    ).strip() or _current_parser_version()
     normalized_strategy = stale_strategy.strip().lower()
     if normalized_strategy not in STALE_STRATEGIES:
         raise ValueError(f"Unsupported stale strategy '{stale_strategy}'.")
@@ -150,12 +248,23 @@ async def refresh_leads(
         if not _site_scrape_completed(result):
             continue
 
-        site_rows = [
-            normalized
-            for envelope in result.accepted
-            if (normalized := _normalize_listing(envelope.listing, default_site=result.site_name)) is not None
-        ]
-        written += await upsert_leads(site_rows, parser_version=active_parser_version)
+        site_rows: list[ScrapedListing] = []
+        site_values: list[tuple[Any, ...]] = []
+        for envelope in result.accepted:
+            normalized = _normalize_listing(envelope.listing, default_site=result.site_name)
+            if normalized is None:
+                continue
+            site_rows.append(normalized)
+            site_values.append(
+                _listing_row_values(
+                    normalized,
+                    parser_version=active_parser_version,
+                    record_status=_envelope_record_status(envelope),
+                )
+            )
+
+        written += await _upsert_listing_values(site_values)
+        await _replace_listing_issues(result, parser_version=active_parser_version)
         await _cleanup_site_listings(
             site_name=result.site_name,
             active_ad_ids=_deduplicated_ad_ids(site_rows, site_name=result.site_name),
@@ -202,7 +311,12 @@ async def _cleanup_site_listings(
                               OR ad_id NOT IN ({placeholders})
                           )
                         """
-                        params = (LISTING_STATUS_STALE, normalized_site, parser_version, *active_ad_ids)
+                        params = (
+                            LISTING_STATUS_STALE,
+                            normalized_site,
+                            parser_version,
+                            *active_ad_ids,
+                        )
                 elif stale_strategy == "delete":
                     sql = "DELETE FROM listings WHERE source_site = %s"
                     params = (normalized_site,)
@@ -215,6 +329,70 @@ async def _cleanup_site_listings(
                     params = (LISTING_STATUS_STALE, normalized_site)
 
                 await cur.execute(sql, params)
+
+
+async def _replace_listing_issues(
+    result: "ScrapeSiteResult",
+    *,
+    parser_version: str,
+) -> None:
+    normalized_site = result.site_name.strip().lower()
+    if not normalized_site:
+        return
+
+    issue_rows: list[tuple[Any, ...]] = []
+    for status, envelopes in (
+        (LISTING_STATUS_ACTIVE, result.accepted),
+        (LISTING_STATUS_REJECTED, result.rejected),
+    ):
+        for envelope in envelopes:
+            normalized = _normalize_listing(envelope.listing, default_site=result.site_name)
+            if normalized is None:
+                continue
+            effective_status = (
+                _envelope_record_status(envelope)
+                if status == LISTING_STATUS_ACTIVE
+                else LISTING_STATUS_REJECTED
+            )
+            for issue in envelope.issues:
+                issue_rows.append(
+                    (
+                        normalized.source_site,
+                        normalized.ad_id,
+                        parser_version,
+                        result.strategy_name,
+                        result.mode_used,
+                        effective_status,
+                        envelope.fallback_action,
+                        issue.code,
+                        issue.field_name,
+                        issue.severity.value,
+                        issue.message,
+                    )
+                )
+
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM listing_extraction_issues
+                    WHERE source_site = %s
+                      AND parser_version = %s
+                    """,
+                    (normalized_site, parser_version),
+                )
+                if issue_rows:
+                    await cur.executemany(
+                        """
+                        INSERT INTO listing_extraction_issues (
+                            source_site, ad_id, parser_version, strategy_name, mode_used,
+                            record_status, fallback_action, issue_code, field_name,
+                            severity, message
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        issue_rows,
+                    )
 
 
 async def record_scrape_execution(execution: "ScrapeExecutionResult") -> None:
@@ -258,9 +436,8 @@ async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                           phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                    f"""
+                    SELECT {VISIBLE_LISTING_COLUMNS}
                     FROM listings
                     WHERE record_status = %s
                       AND parser_version = %s
@@ -271,21 +448,62 @@ async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
                 )
                 rows = await cur.fetchall()
 
+    return [dict(zip(VISIBLE_LISTING_KEYS, row)) for row in rows]
+
+
+async def list_review_leads(limit: int = 100) -> list[dict[str, Any]]:
+    parser_version = _current_parser_version()
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    SELECT {VISIBLE_LISTING_COLUMNS}
+                    FROM listings
+                    WHERE record_status = %s
+                      AND parser_version = %s
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                    """,
+                    (LISTING_STATUS_MANUAL_REVIEW, parser_version, limit),
+                )
+                rows = await cur.fetchall()
+
+    return [dict(zip(VISIBLE_LISTING_KEYS, row)) for row in rows]
+
+
+async def list_listing_issues(limit: int = 250) -> list[dict[str, Any]]:
+    parser_version = _current_parser_version()
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT source_site, ad_id, parser_version, strategy_name, mode_used,
+                           record_status, fallback_action, issue_code, field_name,
+                           severity, message, created_at
+                    FROM listing_extraction_issues
+                    WHERE parser_version = %s
+                    ORDER BY created_at DESC, source_site, ad_id
+                    LIMIT %s
+                    """,
+                    (parser_version, limit),
+                )
+                rows = await cur.fetchall()
+
     keys = [
-        "ad_id",
-        "date_seen",
-        "title",
-        "price",
-        "location",
-        "size",
-        "link",
         "source_site",
-        "phone",
-        "seller_name",
-        "ad_type",
-        "contact_name",
-        "contact_email",
-        "updated_at",
+        "ad_id",
+        "parser_version",
+        "strategy_name",
+        "mode_used",
+        "record_status",
+        "fallback_action",
+        "issue_code",
+        "field_name",
+        "severity",
+        "message",
+        "created_at",
     ]
     return [dict(zip(keys, row)) for row in rows]
 
@@ -318,9 +536,8 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
             async with conn.cursor() as cur:
                 if city:
                     await cur.execute(
-                        """
-                        SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                        f"""
+                        SELECT {VISIBLE_LISTING_COLUMNS}
                         FROM listings
                         WHERE record_status = %s
                           AND parser_version = %s
@@ -328,13 +545,17 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
                           AND location LIKE %s
                         ORDER BY date_seen DESC, updated_at DESC
                         """,
-                        (LISTING_STATUS_ACTIVE, parser_version, start_date.isoformat(), f"%{city}%"),
+                        (
+                            LISTING_STATUS_ACTIVE,
+                            parser_version,
+                            start_date.isoformat(),
+                            f"%{city}%",
+                        ),
                     )
                 else:
                     await cur.execute(
-                        """
-                        SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                        f"""
+                        SELECT {VISIBLE_LISTING_COLUMNS}
                         FROM listings
                         WHERE record_status = %s
                           AND parser_version = %s
@@ -345,70 +566,63 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
                     )
                 rows = await cur.fetchall()
 
-    keys = [
-        "ad_id",
-        "date_seen",
-        "title",
-        "price",
-        "location",
-        "size",
-        "link",
-        "source_site",
-        "phone",
-        "seller_name",
-        "ad_type",
-        "contact_name",
-        "contact_email",
-        "updated_at",
-    ]
-    return [dict(zip(keys, row)) for row in rows]
+    return [dict(zip(VISIBLE_LISTING_KEYS, row)) for row in rows]
 
 
-async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
+async def get_listing(ad_id: str, *, source_site: str | None = None) -> dict[str, Any] | None:
     parser_version = _current_parser_version()
+    normalized_site = (source_site or "").strip().lower()
     async with mysql_pool() as pool:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                           phone, seller_name, ad_type, contact_name, contact_email, updated_at
-                    FROM listings
-                    WHERE ad_id = %s
-                      AND record_status = %s
-                      AND parser_version = %s
-                    LIMIT 1
-                    """,
-                    (ad_id, LISTING_STATUS_ACTIVE, parser_version),
-                )
-                row = await cur.fetchone()
+                if normalized_site:
+                    await cur.execute(
+                        f"""
+                        SELECT {VISIBLE_LISTING_COLUMNS}
+                        FROM listings
+                        WHERE ad_id = %s
+                          AND source_site = %s
+                          AND record_status = %s
+                          AND parser_version = %s
+                        LIMIT 1
+                        """,
+                        (ad_id, normalized_site, LISTING_STATUS_ACTIVE, parser_version),
+                    )
+                    row = await cur.fetchone()
+                else:
+                    await cur.execute(
+                        f"""
+                        SELECT {VISIBLE_LISTING_COLUMNS}
+                        FROM listings
+                        WHERE ad_id = %s
+                          AND record_status = %s
+                          AND parser_version = %s
+                        LIMIT 2
+                        """,
+                        (ad_id, LISTING_STATUS_ACTIVE, parser_version),
+                    )
+                    rows = await cur.fetchall()
+                    if len(rows) > 1:
+                        raise ValueError(
+                            f"Listing ad_id '{ad_id}' is ambiguous. Provide source_site."
+                        )
+                    row = rows[0] if rows else None
 
     if row is None:
         return None
 
-    keys = [
-        "ad_id",
-        "date_seen",
-        "title",
-        "price",
-        "location",
-        "size",
-        "link",
-        "source_site",
-        "phone",
-        "seller_name",
-        "ad_type",
-        "contact_name",
-        "contact_email",
-        "updated_at",
-    ]
-    return dict(zip(keys, row))
+    return dict(zip(VISIBLE_LISTING_KEYS, row))
+
+
+async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
+    return await get_listing(ad_id)
 
 
 async def create_voice_call(
     *,
     source_type: str,
     listing_ad_id: str | None,
+    listing_source_site: str | None,
     tenant_contact_id: int | None,
     contact_name: str,
     phone_raw: str,
@@ -425,6 +639,7 @@ async def create_voice_call(
                     INSERT INTO voice_calls (
                         source_type,
                         listing_ad_id,
+                        listing_source_site,
                         tenant_contact_id,
                         contact_name,
                         phone_raw,
@@ -432,11 +647,12 @@ async def create_voice_call(
                         status,
                         script_name,
                         initiated_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         source_type,
                         listing_ad_id,
+                        listing_source_site,
                         tenant_contact_id,
                         contact_name,
                         phone_raw,
@@ -507,6 +723,7 @@ def _voice_call_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "id",
         "source_type",
         "listing_ad_id",
+        "listing_source_site",
         "tenant_contact_id",
         "twilio_call_sid",
         "contact_name",
@@ -548,7 +765,8 @@ async def list_voice_calls(limit: int = 100) -> list[dict[str, Any]]:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT vc.id, vc.source_type, vc.listing_ad_id, vc.tenant_contact_id,
+                    SELECT vc.id, vc.source_type, vc.listing_ad_id, vc.listing_source_site,
+                           vc.tenant_contact_id,
                            vc.twilio_call_sid, vc.contact_name, vc.phone_raw, vc.phone_e164,
                            vc.status, vc.script_name, vc.answers_json, vc.transcript,
                            vc.recording_url, vc.last_error, vc.initiated_by,
@@ -558,6 +776,7 @@ async def list_voice_calls(limit: int = 100) -> list[dict[str, Any]]:
                     FROM voice_calls vc
                     LEFT JOIN listings l
                       ON l.ad_id = vc.listing_ad_id
+                     AND (vc.listing_source_site IS NULL OR l.source_site = vc.listing_source_site)
                      AND l.record_status = %s
                      AND l.parser_version = %s
                     ORDER BY vc.created_at DESC, vc.id DESC
@@ -576,7 +795,8 @@ async def get_voice_call(voice_call_id: int) -> dict[str, Any] | None:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT vc.id, vc.source_type, vc.listing_ad_id, vc.tenant_contact_id,
+                    SELECT vc.id, vc.source_type, vc.listing_ad_id, vc.listing_source_site,
+                           vc.tenant_contact_id,
                            vc.twilio_call_sid, vc.contact_name, vc.phone_raw, vc.phone_e164,
                            vc.status, vc.script_name, vc.answers_json, vc.transcript,
                            vc.recording_url, vc.last_error, vc.initiated_by,
@@ -586,6 +806,7 @@ async def get_voice_call(voice_call_id: int) -> dict[str, Any] | None:
                     FROM voice_calls vc
                     LEFT JOIN listings l
                       ON l.ad_id = vc.listing_ad_id
+                     AND (vc.listing_source_site IS NULL OR l.source_site = vc.listing_source_site)
                      AND l.record_status = %s
                      AND l.parser_version = %s
                     WHERE vc.id = %s

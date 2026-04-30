@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import csv
-import logging
 from datetime import datetime, timezone
 from io import StringIO
-from typing import Any
+from typing import Any, cast
 
+from app.core.logging import get_logger
 from app.voice.phone import normalize_bulgarian_phone, to_bulgarian_e164
 from app.voice.prompts import SCRIPT_NAME
 
@@ -16,12 +16,7 @@ except ImportError:  # pragma: no cover - optional dependency path
     RequestValidator = None
     TwilioClient = None
 
-try:
-    from app.core.logging import get_logger
-except ImportError:  # pragma: no cover - optional dependency path for lightweight tests
-    get_logger = None
-
-logger = get_logger("voice.service") if get_logger is not None else logging.getLogger("voice.service")
+logger = get_logger("voice.service")
 
 TERMINAL_CALL_STATUSES = {"busy", "canceled", "completed", "failed", "no-answer"}
 
@@ -65,9 +60,21 @@ def parse_tenant_contacts_csv(content: bytes, filename: str = "upload.csv") -> l
     reader = csv.DictReader(StringIO(decoded), delimiter=delimiter)
     rows: list[dict[str, Any]] = []
     for row in reader:
-        normalized_row = {str(key or "").strip().lower(): (value or "").strip() for key, value in row.items()}
-        full_name = normalized_row.get("full_name") or normalized_row.get("name") or normalized_row.get("contact_name") or ""
-        phone_raw = normalized_row.get("phone_raw") or normalized_row.get("phone") or normalized_row.get("mobile") or ""
+        normalized_row = {
+            str(key or "").strip().lower(): (value or "").strip() for key, value in row.items()
+        }
+        full_name = (
+            normalized_row.get("full_name")
+            or normalized_row.get("name")
+            or normalized_row.get("contact_name")
+            or ""
+        )
+        phone_raw = (
+            normalized_row.get("phone_raw")
+            or normalized_row.get("phone")
+            or normalized_row.get("mobile")
+            or ""
+        )
         phone_normalized = normalize_bulgarian_phone(phone_raw)
         if not phone_normalized:
             continue
@@ -124,13 +131,18 @@ class VoiceService:
             logger.warning("Twilio request validation skipped because twilio is not installed.")
             return True
         validator = RequestValidator(self._settings.twilio_auth_token)
-        return validator.validate(url, params, signature)
+        return bool(validator.validate(url, params, signature))
 
-    async def start_listing_call(self, listing_ad_id: str, initiated_by: str = "api") -> dict[str, Any]:
+    async def start_listing_call(
+        self,
+        listing_ad_id: str,
+        listing_source_site: str | None = None,
+        initiated_by: str = "api",
+    ) -> dict[str, Any]:
         from app.services import repository
 
         client = self._ensure_twilio_client()
-        listing = await repository.get_listing_by_ad_id(listing_ad_id)
+        listing = await repository.get_listing(listing_ad_id, source_site=listing_source_site)
         if listing is None:
             raise LookupError(f"Listing {listing_ad_id} was not found.")
         if not listing.get("phone"):
@@ -145,6 +157,7 @@ class VoiceService:
         voice_call_id = await repository.create_voice_call(
             source_type="listing",
             listing_ad_id=listing["ad_id"],
+            listing_source_site=listing.get("source_site"),
             tenant_contact_id=None,
             contact_name=listing.get("contact_name") or listing.get("seller_name") or "",
             phone_raw=listing.get("phone") or "",
@@ -186,7 +199,9 @@ class VoiceService:
 
         voice_call = await repository.get_voice_call(voice_call_id)
         if voice_call is None:
-            raise RuntimeError("Voice call was created but could not be reloaded from the database.")
+            raise RuntimeError(
+                "Voice call was created but could not be reloaded from the database."
+            )
         return voice_call
 
     async def bootstrap_session(self, voice_call_id: int, call_sid: str) -> dict[str, Any]:
@@ -194,7 +209,7 @@ class VoiceService:
 
         existing = self._session_store.get_session(call_sid)
         if existing is not None:
-            return existing
+            return cast(dict[str, Any], existing)
 
         voice_call = await repository.get_voice_call(voice_call_id)
         if voice_call is None:
@@ -202,14 +217,21 @@ class VoiceService:
 
         listing_details: dict[str, Any] = {}
         if voice_call.get("listing_ad_id"):
-            listing = await repository.get_listing_by_ad_id(voice_call["listing_ad_id"])
+            listing = await repository.get_listing(
+                voice_call["listing_ad_id"],
+                source_site=voice_call.get("listing_source_site"),
+            )
             if listing:
                 listing_details = {
                     "ad_id": listing.get("ad_id"),
+                    "source_site": listing.get("source_site"),
                     "title": listing.get("title"),
                     "price": listing.get("price"),
+                    "price_amount": listing.get("price_amount"),
+                    "currency": listing.get("currency"),
                     "location": listing.get("location"),
                     "size": listing.get("size"),
+                    "area_m2": listing.get("area_m2"),
                     "link": listing.get("link"),
                 }
 
@@ -218,6 +240,7 @@ class VoiceService:
             voice_call_id=voice_call["id"],
             source_type=voice_call["source_type"],
             listing_ad_id=voice_call.get("listing_ad_id"),
+            listing_source_site=voice_call.get("listing_source_site"),
             tenant_contact_id=voice_call.get("tenant_contact_id"),
             contact_name=voice_call.get("contact_name") or "",
             phone_raw=voice_call.get("phone_raw") or "",
@@ -233,7 +256,7 @@ class VoiceService:
         session = self._session_store.get_session(call_sid)
         if session is None:
             raise RuntimeError("Voice session was not created.")
-        return session
+        return cast(dict[str, Any], session)
 
     async def persist_session_snapshot(self, call_sid: str, *, status: str | None = None) -> None:
         from app.services import repository

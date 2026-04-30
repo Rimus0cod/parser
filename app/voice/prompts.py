@@ -9,7 +9,7 @@ from app.voice.extractors import QUESTION_SEQUENCE
 try:
     from google.cloud import texttospeech
 except ImportError:  # pragma: no cover - optional dependency path
-    texttospeech = None
+    texttospeech = None  # type: ignore[assignment]
 
 
 SCRIPT_NAME = "bg_listing_v1"
@@ -43,9 +43,7 @@ def prompt_public_url(base_url: str, filename: str) -> str:
 
 def ensure_prompt_assets(settings: Any, logger: Any) -> None:
     cache_dir = ensure_prompt_directory()
-    missing = [
-        filename for filename in PROMPT_MANIFEST if not (cache_dir / filename).exists()
-    ]
+    missing = [filename for filename in PROMPT_MANIFEST if not (cache_dir / filename).exists()]
     if not missing:
         return
 

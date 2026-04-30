@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ScrapeModeConfig = Literal["http", "browser", "ai", "dynamic", "stealth"]
 
 
 def _split_csv(raw: str) -> list[str]:
@@ -30,10 +31,7 @@ def _default_user_agents() -> list[str]:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/136.0.0.0 Safari/537.36"
         ),
-        (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) "
-            "Gecko/20100101 Firefox/138.0"
-        ),
+        ("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) " "Gecko/20100101 Firefox/138.0"),
     ]
 
 
@@ -57,6 +55,10 @@ def _default_scrapling_blocked_markers() -> list[str]:
     ]
 
 
+def _default_mode_order() -> list[ScrapeModeConfig]:
+    return ["http", "browser", "ai"]
+
+
 class SiteConfig(BaseModel):
     name: str
     base_url: str
@@ -68,9 +70,7 @@ class SiteConfig(BaseModel):
     enabled: bool = True
     verify_ssl: bool = True
     detail_pages_enabled: bool = True
-    mode_order: list[Literal["http", "browser", "ai", "dynamic", "stealth"]] = Field(
-        default_factory=lambda: ["http", "browser", "ai"]
-    )
+    mode_order: list[ScrapeModeConfig] = Field(default_factory=_default_mode_order)
     listing_path_keywords: list[str] = Field(default_factory=list)
     allowed_domains: list[str] = Field(default_factory=list)
 
@@ -132,46 +132,6 @@ def _default_sites() -> list[SiteConfig]:
             },
             listing_path_keywords=["/obiava/", "/obiavi/"],
             allowed_domains=["alo.bg", "www.alo.bg"],
-        ),
-        SiteConfig(
-            name="dom.ria.com",
-            base_url="https://dom.ria.com/uk/arenda-kvartir/?page={page}",
-            max_pages=5,
-            verify_ssl=False,
-            selectors={
-                "card": "article, section, div",
-                "title": "a[href*='/uk/arenda-kvartir/'], a[href*='/arenda-kvartir/']",
-                "link": "a[href*='/uk/arenda-kvartir/'], a[href*='/arenda-kvartir/']",
-            },
-            listing_path_keywords=["/uk/arenda-kvartir/", "/arenda-kvartir/"],
-            allowed_domains=["dom.ria.com"],
-        ),
-        SiteConfig(
-            name="olx.ua",
-            base_url=(
-                "https://www.olx.ua/uk/nedvizhimost/kvartiry/"
-                "dolgosrochnaya-arenda-kvartir/?page={page}"
-            ),
-            max_pages=5,
-            selectors={
-                "card": "article, li, div",
-                "title": "a[href]",
-                "link": "a[href]",
-            },
-            listing_path_keywords=["/d/uk/obyavlenie/", "/obyavlenie/"],
-            allowed_domains=["olx.ua", "www.olx.ua"],
-        ),
-        SiteConfig(
-            name="lun.ua",
-            base_url="https://lun.ua/rent/kyiv/flats?page={page}",
-            max_pages=3,
-            selectors={
-                "card": "article, section, div",
-                "title": "a[href*='/rent/kyiv/flats/']",
-                "link": "a[href*='/rent/kyiv/flats/']",
-            },
-            listing_path_keywords=["/rent/kyiv/flats/"],
-            allowed_domains=["lun.ua"],
         ),
     ]
 

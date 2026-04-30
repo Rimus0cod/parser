@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -16,11 +17,19 @@ class Lead(BaseModel):
     size: str
     link: HttpUrl | str
     source_site: str = ""
+    parser_version: str = ""
+    record_status: str = ""
     phone: str
     seller_name: str
     ad_type: str
     contact_name: str
     contact_email: str
+    price_raw: str = ""
+    price_amount: Decimal | None = None
+    currency: str = ""
+    location_raw: str = ""
+    size_raw: str = ""
+    area_m2: Decimal | None = None
     updated_at: datetime | None = None
 
 
@@ -43,6 +52,7 @@ class TriggerScrapeResponse(BaseModel):
 
 class VoiceCallCreateRequest(BaseModel):
     listing_ad_id: str
+    listing_source_site: str | None = None
     initiated_by: str = "api"
 
 
@@ -52,6 +62,7 @@ class VoiceCall(BaseModel):
     id: int
     source_type: str
     listing_ad_id: str | None = None
+    listing_source_site: str | None = None
     tenant_contact_id: int | None = None
     twilio_call_sid: str | None = None
     contact_name: str = ""
@@ -91,3 +102,20 @@ class TenantContact(BaseModel):
 class TenantContactImportResponse(BaseModel):
     imported: int
     skipped: int
+
+
+class ListingIssue(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_site: str
+    ad_id: str
+    parser_version: str
+    strategy_name: str
+    mode_used: str
+    record_status: str
+    fallback_action: str
+    issue_code: str
+    field_name: str
+    severity: str
+    message: str
+    created_at: datetime | None = None

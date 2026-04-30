@@ -24,7 +24,9 @@ class _FakeStrategy:
 
 
 class _BlockingStrategy:
-    def __init__(self, *, name: str, mode: str, blocked_sites: set[str], reason: str = "captcha") -> None:
+    def __init__(
+        self, *, name: str, mode: str, blocked_sites: set[str], reason: str = "captcha"
+    ) -> None:
         self.name = name
         self.mode = mode
         self._blocked_sites = blocked_sites
@@ -138,7 +140,9 @@ class ScrapingEngineTests(unittest.TestCase):
         async def run_test() -> None:
             result = await engine.scrape_all_sites()
             self.assertEqual(result.accepted_count, 2)
-            self.assertEqual({row.source_site for row in result.listings}, {site_a.name, site_b.name})
+            self.assertEqual(
+                {row.source_site for row in result.listings}, {site_a.name, site_b.name}
+            )
 
         asyncio.run(run_test())
 
@@ -166,7 +170,9 @@ class ScrapingEngineTests(unittest.TestCase):
             result = await engine.scrape_all_sites()
             self.assertEqual(result.accepted_count, 1)
             self.assertEqual(result.site_results[0].strategy_name, "browser_strategy")
-            self.assertIn("http_strategy blocked: blocked_marker:captcha", result.site_results[0].errors)
+            self.assertIn(
+                "http_strategy blocked: blocked_marker:captcha", result.site_results[0].errors
+            )
 
         asyncio.run(run_test())
 

@@ -4,6 +4,7 @@ credentials.json
 parser.log
 __pycache__/
 .pytest_cache/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
 .venv/

@@ -78,7 +78,7 @@ class ListingExtractorTests(unittest.TestCase):
         link = _FakeNode("Sunny apartment for rent", attrs={"href": "/listing/12345"})
         seller = _FakeNode("Agency Alpha")
         card = _FakeNode(
-            "Sunny apartment for rent 1200 EUR Sofia, Center 65 м²",
+            "Sunny apartment for rent 1200 EUR Sofia, Center 65 m2",
             selectors={
                 "a[href]": [link],
                 ".seller": [seller],
@@ -109,9 +109,9 @@ class ListingExtractorTests(unittest.TestCase):
         self.assertEqual(enriched.contact_email, "owner@example.com")
 
     def test_extractor_detects_blocked_and_js_required_pages(self) -> None:
-        site = SiteConfig(name="olx.ua", base_url="https://www.olx.ua/")
+        site = SiteConfig(name="alo.bg", base_url="https://www.alo.bg/")
         profile = SiteProfile(
-            name="olx.ua",
+            name="alo.bg",
             list_wait_selector="article",
             blocked_markers=("captcha",),
             requires_js_on=("enable javascript",),
@@ -127,48 +127,53 @@ class ListingExtractorTests(unittest.TestCase):
         self.assertEqual(extractor.detect_list_page_issue(js_page), "js_required:enable javascript")
 
         detail_page = _FakeNode("detail text")
-        self.assertEqual(extractor.detect_detail_page_issue(detail_page), "detail_requires_browser:body")
+        self.assertEqual(
+            extractor.detect_detail_page_issue(detail_page), "detail_requires_browser:body"
+        )
 
     def test_extractor_prefers_contact_block_links_over_global_page_number(self) -> None:
         site = SiteConfig(
-            name="dom.ria.com",
-            base_url="https://dom.ria.com/uk/arenda-kvartir/",
+            name="alo.bg",
+            base_url="https://www.alo.bg/obiavi/imoti-naemi/",
             selectors={
                 "card": "article",
                 "title": "a[href]",
                 "link": "a[href]",
             },
-            listing_path_keywords=["/uk/arenda-kvartir/"],
-            allowed_domains=["dom.ria.com"],
+            listing_path_keywords=["/obiava/"],
+            allowed_domains=["www.alo.bg", "alo.bg"],
         )
         profile = SiteProfile(
-            name="dom.ria.com",
+            name="alo.bg",
             detail_wait_selector="body",
             detail_contact_selectors=("[class*='contact']",),
-            detail_requires_browser=True,
         )
         extractor = ListingExtractor(site, profile)
 
         listing = extractor._parse_card(
             card=_FakeNode(
-                "Apartment 25000 UAH Kyiv, Center 50 м²",
+                "Apartment for rent 1200 BGN Sofia, Center 50 m2",
                 selectors={
-                    "a[href]": [_FakeNode("Apartment", attrs={"href": "/uk/arenda-kvartir/kyiv-flat-12345/"})],
+                    "a[href]": [
+                        _FakeNode(
+                            "Apartment", attrs={"href": "/obiava/apartment-sofia-12345"}
+                        )
+                    ],
                 },
             ),
-            base_url="https://dom.ria.com/uk/arenda-kvartir/",
+            base_url="https://www.alo.bg/obiavi/imoti-naemi/",
             position=0,
         )
         assert listing is not None
 
-        tel_link = _FakeNode("+380 67 123 45 67", attrs={"href": "tel:+380671234567"})
+        tel_link = _FakeNode("+359 (0)88 123 4567", attrs={"href": "tel:00359 88 123 4567"})
         mail_link = _FakeNode("owner@example.com", attrs={"href": "mailto:owner@example.com"})
         contact_block = _FakeNode(
-            "Контактна особа Іван Петренко",
+            "Contact Ivan Petrov",
             selectors={"a[href]": [tel_link, mail_link]},
         )
         detail_page = _FakeNode(
-            "019607843 header number Roboto ArialFallBack icon:https://dom.ria.com",
+            "019607843 header number Roboto ArialFallBack icon:https://www.alo.bg",
             selectors={
                 "[class*='contact']": [contact_block],
                 "a[href]": [],
@@ -177,9 +182,18 @@ class ListingExtractorTests(unittest.TestCase):
 
         enriched = extractor.enrich_listing(detail_page, listing)
 
-        self.assertEqual(enriched.phone, "+380671234567")
+        self.assertEqual(enriched.phone, "+359881234567")
         self.assertEqual(enriched.contact_email, "owner@example.com")
-        self.assertEqual(enriched.contact_name, "Іван Петренко")
+        self.assertEqual(enriched.contact_name, "Ivan Petrov")
+
+    def test_extractor_rejects_non_bulgarian_phone_numbers(self) -> None:
+        site = SiteConfig(name="alo.bg", base_url="https://www.alo.bg/")
+        extractor = ListingExtractor(site)
+
+        self.assertEqual(extractor._extract_phone_from_text("+380 67 123 45 67"), "")
+        self.assertEqual(extractor._extract_phone_from_text("019607843"), "")
+        self.assertEqual(extractor._extract_phone_from_text("0888 123 456"), "0888123456")
+        self.assertEqual(extractor._extract_phone_from_text("00359 88 123 4567"), "+359881234567")
 
     def test_html_adapter_ignores_script_and_style_text(self) -> None:
         page = parse_html_document(
@@ -187,10 +201,10 @@ class ListingExtractorTests(unittest.TestCase):
             <html>
               <head>
                 <style>.x{font-family:Roboto,ArialFallBack}</style>
-                <script>window.icon='https://dom.ria.com';</script>
+                <script>window.icon='https://example.com';</script>
               </head>
               <body>
-                <main>Контактна особа Іван Петренко</main>
+                <main>Contact Ivan Petrov</main>
               </body>
             </html>
             """,
@@ -199,7 +213,7 @@ class ListingExtractorTests(unittest.TestCase):
 
         text = page.text_content()
 
-        self.assertIn("Контактна особа Іван Петренко", text)
+        self.assertIn("Contact Ivan Petrov", text)
         self.assertNotIn("Roboto", text)
         self.assertNotIn("icon", text)
 

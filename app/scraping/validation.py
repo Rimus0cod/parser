@@ -22,6 +22,9 @@ class RealEstateValidationLayer:
         location = getattr(listing, "location", "")
         size = getattr(listing, "size", "")
         phone = getattr(listing, "phone", "")
+        price_amount = getattr(listing, "price_amount", None)
+        currency = getattr(listing, "currency", "")
+        area_m2 = getattr(listing, "area_m2", None)
 
         if not ad_id:
             issues.append(
@@ -78,6 +81,14 @@ class RealEstateValidationLayer:
                     field_name="price",
                 )
             )
+        elif price_amount is None or not currency:
+            issues.append(
+                ValidationIssue(
+                    code="unnormalized_price",
+                    message="Price was extracted but amount or currency normalization failed.",
+                    field_name="price",
+                )
+            )
 
         if not location:
             issues.append(
@@ -96,12 +107,28 @@ class RealEstateValidationLayer:
                     field_name="size",
                 )
             )
+        elif size and area_m2 is None:
+            issues.append(
+                ValidationIssue(
+                    code="unnormalized_size",
+                    message="Size was extracted but area normalization failed.",
+                    field_name="size",
+                )
+            )
 
         if phone and re.search(r"\d", phone) is None:
             issues.append(
                 ValidationIssue(
                     code="invalid_phone",
                     message="Phone value does not contain digits.",
+                    field_name="phone",
+                )
+            )
+        if not phone:
+            issues.append(
+                ValidationIssue(
+                    code="missing_phone",
+                    message="Phone was not extracted.",
                     field_name="phone",
                 )
             )

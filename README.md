@@ -25,10 +25,12 @@ The project is designed to run primarily through Docker Compose and includes:
 
 ## Key Features
 
-- Async multi-site scraper built on `scrapling` sessions with adaptive selectors and mode escalation
+- Async multi-site scraper built on HTTP and Playwright sessions with adaptive selectors and mode escalation
 - REST API for health checks, leads, agencies, and manual scrape triggering
 - Streamlit dashboard for operators
 - MySQL persistence with typed repository layer
+- Composite listing identity by `source_site + ad_id` with normalized price and area fields
+- Manual-review status and stored field-level extraction issues for parser quality checks
 - Redis-backed worker status and run metadata
 - Dockerized deployment with health checks and restart policies
 - Optional Sentry integration
@@ -79,7 +81,7 @@ app/
   core/logging.py            structured logging and optional Sentry setup
   db/mysql.py                MySQL pool and schema initialization
   models/schemas.py          API response models
-  scraping/                  production scraping engine, Scrapling fetchers, profiles, validation
+  scraping/                  production scraping engine, fetchers, profiles, validation
   services/repository.py     database access layer
   scraper_worker.py          long-running worker loop
   ui/streamlit_app.py        operator dashboard
@@ -106,9 +108,6 @@ Default built-in sources:
 
 - `imoti.bg`
 - `alo.bg`
-- `dom.ria.com`
-- `olx.ua`
-- `lun.ua`
 
 If `SCRAPER_SITES` is left empty, the built-in defaults are used.
 
@@ -131,7 +130,7 @@ SCRAPER_SITES=[{"name":"imoti.bg","base_url":"https://imoti.bg/наеми/page:{
 - Poetry `1.8+`
 - MySQL `8`
 - Redis `7`
-- Browser dependencies for `scrapling` dynamic / stealth fetchers
+- Browser dependencies for Playwright-backed dynamic/browser mode
 
 ## Quick Start
 
@@ -154,7 +153,7 @@ Recommended:
 - keep `LOG_FORMAT=json`
 - enable `SENTRY_DSN` if you use Sentry
 - restrict `SCRAPER_SITES` to the sources you actually want to run
-- keep `SCRAPLING_DYNAMIC_ENABLED=false` and `SCRAPLING_STEALTH_ENABLED=false` until you validate target sites
+- keep browser and AI fallback modes disabled until you validate target sites
 
 ### 2. Prepare Streamlit users
 
@@ -178,12 +177,12 @@ credentials:
       password: "$2b$12$replace_with_generated_hash"
 ```
 
-### 3. Install Scrapling browser runtime for local development
+### 3. Install Playwright browser runtime for local development
 
-If you plan to use `dynamic` or `stealth` modes locally, install the browser runtime once:
+If you plan to use `dynamic` / `browser` mode locally, install the browser runtime once:
 
 ```bash
-poetry run scrapling install
+poetry run playwright install chromium
 ```
 
 Inside Docker this step is already baked into the image build.
@@ -291,10 +290,10 @@ Main configuration lives in [.env.example](/Users/diff/code/parser/.env.example)
 - `SCRAPE_DETAIL_PAGES`
 - `HTTP_MAX_CONNECTIONS`
 - `HTTP_MAX_KEEPALIVE_CONNECTIONS`
-- `SCRAPLING_DYNAMIC_ENABLED`
-- `SCRAPLING_STEALTH_ENABLED`
-- `SCRAPLING_DYNAMIC_CONCURRENCY`
-- `SCRAPLING_STEALTH_CONCURRENCY`
+- `BROWSER_STRATEGY_ENABLED` / legacy alias `SCRAPLING_DYNAMIC_ENABLED`
+- `AI_STRATEGY_ENABLED` / legacy alias `SCRAPLING_STEALTH_ENABLED`
+- `BROWSER_CONCURRENCY` / legacy alias `SCRAPLING_DYNAMIC_CONCURRENCY`
+- `AI_STRATEGY_CONCURRENCY` / legacy alias `SCRAPLING_STEALTH_CONCURRENCY`
 - `SCRAPLING_HTTP_IMPERSONATE`
 - `SCRAPLING_HTTP3`
 - `SCRAPLING_DISABLE_RESOURCES`
@@ -359,14 +358,14 @@ Main configuration lives in [.env.example](/Users/diff/code/parser/.env.example)
 - Exposes REST endpoints
 - Can trigger background scrape jobs
 - Bootstraps schema on startup
-- Must include Scrapling browser runtime because `POST /trigger-scrape` can escalate into `dynamic` / `stealth`
+- Must include Playwright browser runtime because `POST /trigger-scrape` can escalate into `dynamic` / `browser`
 
 ### `scraper`
 
 - Runs scheduled scraping loop
 - Writes run status into Redis
 - Writes listings to MySQL
-- Uses `http -> dynamic -> stealth` escalation when a source is blocked, JS-rendered, or fails required selector checks
+- Uses `http -> browser -> ai` escalation when a source is blocked, JS-rendered, or fails required selector checks
 
 ### `streamlit_ui`
 
@@ -387,6 +386,14 @@ Returns dependency readiness for Redis and MySQL and responds with `503` when th
 
 Returns recent leads.
 
+### `GET /leads/review?limit=100`
+
+Returns listings quarantined for manual review because parser validation found field-level warnings.
+
+### `GET /leads/issues?limit=250`
+
+Returns stored extraction issues for the current parser version.
+
 ### `GET /agencies?limit=100`
 
 Returns recent agencies if present in storage.
@@ -402,7 +409,7 @@ Install dependencies:
 
 ```bash
 poetry install --with dev
-poetry run scrapling install
+poetry run playwright install chromium
 ```
 
 Run checks:
@@ -531,7 +538,7 @@ Useful runtime signals:
 - Enable backups for MySQL volume
 - Set up Sentry or central log shipping
 - Restrict `SCRAPER_SITES` to validated sources
-- Keep `SCRAPLING_DYNAMIC_ENABLED` and `SCRAPLING_STEALTH_ENABLED` off until HTTP mode is validated for each enabled source
+- Keep browser and AI fallback modes off until HTTP mode is validated for each enabled source
 - Verify one manual scrape before enabling long-running worker mode
 
 ### Recommended deployment model
@@ -572,10 +579,10 @@ docker compose exec redis redis-cli MGET scrape:last_status scrape:last_total_sc
 
 If `HTTP 200` exists but `last_total_scraped=0`, the source likely changed markup and needs parser updates.
 
-If logs show `blocked_reason` or repeated fallback to `dynamic` / `stealth`, validate:
+If logs show `blocked_reason` or repeated fallback to `dynamic` / `browser` / `ai`, validate:
 
 - browser runtime was installed successfully in the image
-- `SCRAPLING_DYNAMIC_ENABLED=true` or `SCRAPLING_STEALTH_ENABLED=true` for the affected site
+- `BROWSER_STRATEGY_ENABLED=true` or `AI_STRATEGY_ENABLED=true` for the affected site
 - target site still matches the configured selectors in `app/core/config.py`
 
 ### MySQL auth errors

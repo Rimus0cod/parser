@@ -52,7 +52,9 @@ async def send_to_integrations(listings: list[ScrapedListing]) -> None:
     if webhook_integration is not None:
         try:
             results = await webhook_integration.send_batch_leads(listings)
-            logger.info("Webhook batch send completed", count=len(listings), success_count=sum(results))
+            logger.info(
+                "Webhook batch send completed", count=len(listings), success_count=sum(results)
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Webhook integration failed", error=str(exc))
 
@@ -71,11 +73,11 @@ async def send_to_integrations(listings: list[ScrapedListing]) -> None:
     bitrix24_integration = get_bitrix24_integration()
     if bitrix24_integration is not None:
         try:
-            successful_ids = await bitrix24_integration.send_batch_deals(listings)
+            successful_ad_ids = await bitrix24_integration.send_batch_deals(listings)
             logger.info(
                 "Bitrix24 batch send completed",
                 count=len(listings),
-                success_count=len(successful_ids),
+                success_count=len(successful_ad_ids),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Bitrix24 integration failed", error=str(exc))
@@ -125,13 +127,19 @@ async def run_once(settings: Settings | None = None) -> int:
         engine = build_scraping_engine(settings)
         execution = await engine.scrape_all_sites()
         listings = execution.listings
+        integration_listings = [
+            envelope.listing
+            for result in execution.site_results
+            for envelope in result.accepted
+            if envelope.fallback_action == "accept"
+        ]
         written = await refresh_leads(
             execution,
             parser_version=settings.scrape_data_version,
             stale_strategy=settings.scrape_stale_strategy,
         )
         await record_scrape_execution(execution)
-        await send_to_integrations(listings)
+        await send_to_integrations(integration_listings)
 
         _set_redis_state(
             redis,
@@ -148,6 +156,7 @@ async def run_once(settings: Settings | None = None) -> int:
             parsed=len(listings),
             rejected=execution.rejected_count,
             upserted=written,
+            sent_to_integrations=len(integration_listings),
         )
         return written
     finally:

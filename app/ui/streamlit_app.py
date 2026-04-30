@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
+
 import asyncio
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import streamlit as st
 import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
+import yaml  # type: ignore[import-untyped, unused-ignore]
+from yaml.loader import SafeLoader  # type: ignore[import-untyped, unused-ignore]
 
 # Streamlit may execute this file as a standalone script, so keep the repo root
 # on sys.path to preserve absolute imports like `app.core.config`.
@@ -24,6 +26,8 @@ from app.core.config import validate_runtime_settings
 from app.services.repository import (
     list_agencies,
     list_leads,
+    list_listing_issues,
+    list_review_leads,
     list_tenant_contacts,
     list_voice_calls,
     upsert_tenant_contacts,
@@ -46,7 +50,7 @@ def load_auth_config() -> dict[str, Any]:
     usernames = config.get("credentials", {}).get("usernames", {})
     if not usernames:
         raise RuntimeError("Streamlit users config does not define any usernames.")
-    return config
+    return cast(dict[str, Any], config)
 
 
 def render_login() -> tuple[bool, str | None]:
@@ -71,21 +75,35 @@ def render_login() -> tuple[bool, str | None]:
     return False, None
 
 
-async def _load_dashboard_frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+async def _load_dashboard_frames() -> (
+    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
+):
     leads = await list_leads(limit=250)
+    review_leads = await list_review_leads(limit=250)
+    listing_issues = await list_listing_issues(limit=250)
     agencies = await list_agencies(limit=250)
     voice_calls = await list_voice_calls(limit=250)
     tenant_contacts = await list_tenant_contacts(limit=250)
     return (
         pd.DataFrame(leads),
+        pd.DataFrame(review_leads),
+        pd.DataFrame(listing_issues),
         pd.DataFrame(agencies),
         pd.DataFrame(voice_calls),
         pd.DataFrame(tenant_contacts),
     )
 
 
-async def _start_voice_call(listing_ad_id: str, initiated_by: str) -> dict[str, Any]:
-    return await get_voice_service().start_listing_call(listing_ad_id=listing_ad_id, initiated_by=initiated_by)
+async def _start_voice_call(
+    listing_ad_id: str,
+    listing_source_site: str | None,
+    initiated_by: str,
+) -> dict[str, Any]:
+    return await get_voice_service().start_listing_call(
+        listing_ad_id=listing_ad_id,
+        listing_source_site=listing_source_site,
+        initiated_by=initiated_by,
+    )
 
 
 async def _import_tenants(rows: list[dict[str, Any]]) -> int:
@@ -120,9 +138,19 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
 
     display_columns = [
         column
-        for column in ("ad_id", "title", "price", "location", "phone", "seller_name", "contact_name")
+        for column in (
+            "ad_id",
+            "title",
+            "price",
+            "location",
+            "phone",
+            "seller_name",
+            "contact_name",
+        )
         if column in leads_df.columns
     ]
+    if "source_site" in leads_df.columns and "source_site" not in display_columns:
+        display_columns.insert(1, "source_site")
     launch_df = leads_df[display_columns].copy()
     launch_df.insert(0, "launch", False)
     edited_df = st.data_editor(
@@ -131,7 +159,9 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
         hide_index=True,
         disabled=[column for column in launch_df.columns if column != "launch"],
         column_config={
-            "launch": st.column_config.CheckboxColumn("Call", help="Select one lead to start a call."),
+            "launch": st.column_config.CheckboxColumn(
+                "Call", help="Select one lead to start a call."
+            ),
         },
         key="voice_launch_editor",
     )
@@ -144,16 +174,35 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
             st.warning("Select only one lead at a time.")
         else:
             listing_ad_id = str(selected_rows.iloc[0]["ad_id"])
+            listing_source_site = (
+                str(selected_rows.iloc[0]["source_site"])
+                if "source_site" in selected_rows.columns
+                else None
+            )
             try:
-                result = asyncio.run(_start_voice_call(listing_ad_id, username or "streamlit"))
+                result = asyncio.run(
+                    _start_voice_call(listing_ad_id, listing_source_site, username or "streamlit")
+                )
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Voice call could not be created: {exc}")
             else:
-                st.success(
-                    f"Voice call #{result['id']} created for listing {listing_ad_id}."
-                )
+                st.success(f"Voice call #{result['id']} created for listing {listing_ad_id}.")
 
     st.dataframe(leads_df, use_container_width=True, hide_index=True)
+
+
+def _render_quality_tab(review_leads_df: pd.DataFrame, listing_issues_df: pd.DataFrame) -> None:
+    st.subheader("Manual Review")
+    if review_leads_df.empty:
+        st.info("No leads currently require manual review.")
+    else:
+        st.dataframe(review_leads_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Extraction Issues")
+    if listing_issues_df.empty:
+        st.info("No parser extraction issues recorded for the current parser version.")
+    else:
+        st.dataframe(listing_issues_df, use_container_width=True, hide_index=True)
 
 
 def _render_agencies_tab(agencies_df: pd.DataFrame) -> None:
@@ -250,16 +299,27 @@ def main() -> None:
     st.title("Lead SaaS Dashboard")
     st.caption(f"Welcome, {username}. JWT-backed auth cookie is active.")
     if not settings.voice_enabled:
-        st.info("Voice integration is disabled. Set `VOICE_ENABLED=true` to enable outbound calling.")
+        st.info(
+            "Voice integration is disabled. Set `VOICE_ENABLED=true` to enable outbound calling."
+        )
 
-    leads_df, agencies_df, voice_calls_df, tenant_contacts_df = asyncio.run(_load_dashboard_frames())
+    (
+        leads_df,
+        review_leads_df,
+        listing_issues_df,
+        agencies_df,
+        voice_calls_df,
+        tenant_contacts_df,
+    ) = asyncio.run(_load_dashboard_frames())
     _render_overview(leads_df, agencies_df, voice_calls_df, tenant_contacts_df)
 
-    leads_tab, agencies_tab, voice_tab, tenants_tab = st.tabs(
-        ["Leads", "Agencies", "Voice Calls", "Tenant Contacts"]
+    leads_tab, quality_tab, agencies_tab, voice_tab, tenants_tab = st.tabs(
+        ["Leads", "Parser Quality", "Agencies", "Voice Calls", "Tenant Contacts"]
     )
     with leads_tab:
         _render_leads_tab(leads_df, username)
+    with quality_tab:
+        _render_quality_tab(review_leads_df, listing_issues_df)
     with agencies_tab:
         _render_agencies_tab(agencies_df)
     with voice_tab:

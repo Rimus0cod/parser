@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import AsyncIterator
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -9,14 +11,21 @@ from redis import Redis
 from app.core.config import get_settings, validate_runtime_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.mysql import init_schema, ping_mysql
-from app.models.schemas import Agency, Lead, TriggerScrapeResponse
+from app.models.schemas import Agency, Lead, ListingIssue, TriggerScrapeResponse
 from app.scraping import build_scraping_engine
 from app.services.scrape_lock import (
     acquire_scrape_lock,
     release_scrape_lock,
     scrape_lock_ttl_seconds,
 )
-from app.services.repository import list_agencies, list_leads, record_scrape_execution, refresh_leads
+from app.services.repository import (
+    list_agencies,
+    list_leads,
+    list_listing_issues,
+    list_review_leads,
+    record_scrape_execution,
+    refresh_leads,
+)
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
@@ -32,7 +41,17 @@ configure_logging(
     sentry_traces_sample_rate=settings.sentry_traces_sample_rate,
 )
 logger = get_logger("api")
-app = FastAPI(title=settings.app_name, version="0.2.0")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    validate_runtime_settings(settings, component="api")
+    await init_schema()
+    prepare_voice_runtime()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 
 
 def _redis() -> Redis:
@@ -80,13 +99,6 @@ async def _run_scrape_job(lock_token: str) -> None:
         redis.set("scrape:last_finished_at", datetime.now(timezone.utc).isoformat())
 
 
-@app.on_event("startup")
-async def startup() -> None:
-    validate_runtime_settings(settings, component="api")
-    await init_schema()
-    prepare_voice_runtime()
-
-
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
@@ -115,6 +127,18 @@ async def get_leads(limit: int = Query(default=100, ge=1, le=1000)) -> list[Lead
     return [Lead.model_validate(row) for row in rows]
 
 
+@app.get("/leads/review", response_model=list[Lead])
+async def get_review_leads(limit: int = Query(default=100, ge=1, le=1000)) -> list[Lead]:
+    rows = await list_review_leads(limit=limit)
+    return [Lead.model_validate(row) for row in rows]
+
+
+@app.get("/leads/issues", response_model=list[ListingIssue])
+async def get_listing_issues(limit: int = Query(default=250, ge=1, le=1000)) -> list[ListingIssue]:
+    rows = await list_listing_issues(limit=limit)
+    return [ListingIssue.model_validate(row) for row in rows]
+
+
 @app.get("/agencies", response_model=list[Agency])
 async def get_agencies(limit: int = Query(default=100, ge=1, le=1000)) -> list[Agency]:
     rows = await list_agencies(limit=limit)
@@ -132,7 +156,9 @@ async def trigger_scrape(background_tasks: BackgroundTasks) -> TriggerScrapeResp
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Scrape trigger failed because Redis is unavailable", error=str(exc))
-        raise HTTPException(status_code=503, detail="Redis is unavailable; scrape trigger was rejected.") from exc
+        raise HTTPException(
+            status_code=503, detail="Redis is unavailable; scrape trigger was rejected."
+        ) from exc
 
     if lock_token is None:
         return TriggerScrapeResponse(

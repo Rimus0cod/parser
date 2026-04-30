@@ -29,6 +29,7 @@ class VoiceRepositoryTests(unittest.TestCase):
             1,
             "listing",
             "A1",
+            "example.com",
             None,
             "CA123",
             "Broker",
@@ -51,6 +52,7 @@ class VoiceRepositoryTests(unittest.TestCase):
         )
 
         parsed = repository._voice_call_from_row(row)
+        self.assertEqual(parsed["listing_source_site"], "example.com")
         self.assertEqual(parsed["answers_json"]["price"], "900 евро")
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from html import unescape
-from typing import Iterable
+from typing import Iterable, cast
 
 from lxml import etree, html
 
@@ -43,14 +43,19 @@ class RegexMatch:
 
 
 class HtmlNode:
-    def __init__(self, element: etree._Element, *, url: str = "", status_code: int | None = None) -> None:
+    def __init__(
+        self, element: etree._Element, *, url: str = "", status_code: int | None = None
+    ) -> None:
         self._element = element
         self.url = url
         self.status_code = status_code
         self.status = status_code
 
     def css(self, selector: str) -> list["HtmlNode"]:
-        return [HtmlNode(node, url=self.url, status_code=self.status_code) for node in _select_nodes(self._element, selector)]
+        return [
+            HtmlNode(node, url=self.url, status_code=self.status_code)
+            for node in _select_nodes(self._element, selector)
+        ]
 
     def css_first(
         self,
@@ -80,8 +85,13 @@ class HtmlNode:
                 matches.append(HtmlNode(sibling, url=self.url, status_code=self.status_code))
         return matches
 
-    def find_by_regex(self, pattern: str, *, first_match: bool = False) -> RegexMatch | list[RegexMatch] | None:
-        matches = [RegexMatch(match.group(0)) for match in re.finditer(pattern, self.get_all_text(), re.I | re.M)]
+    def find_by_regex(
+        self, pattern: str, *, first_match: bool = False
+    ) -> RegexMatch | list[RegexMatch] | None:
+        matches = [
+            RegexMatch(match.group(0))
+            for match in re.finditer(pattern, self.get_all_text(), re.I | re.M)
+        ]
         if first_match:
             return matches[0] if matches else None
         return matches
@@ -105,10 +115,10 @@ class HtmlNode:
         return dict(self._element.attrib)
 
     def get(self, attr_name: str, default: str | None = None) -> str | None:
-        return self._element.get(attr_name, default)
+        return cast(str | None, self._element.get(attr_name, default))
 
     def __str__(self) -> str:
-        return html.tostring(self._element, encoding="unicode")
+        return cast(str, html.tostring(self._element, encoding="unicode"))
 
 
 class HtmlDocument(HtmlNode):

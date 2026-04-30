@@ -8,7 +8,7 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 
@@ -28,11 +28,11 @@ try:
         async_playwright,
     )
 except ImportError:  # pragma: no cover - optional dependency path for local imports
-    Browser = None
-    BrowserContext = None
-    Playwright = None
-    PlaywrightTimeoutError = TimeoutError
-    async_playwright = None
+    Browser = None  # type: ignore[assignment,misc]
+    BrowserContext = None  # type: ignore[assignment,misc]
+    Playwright = None  # type: ignore[assignment,misc]
+    PlaywrightTimeoutError = TimeoutError  # type: ignore[assignment,misc]
+    async_playwright = None  # type: ignore[assignment]
 
 PageKind = Literal["list", "detail"]
 Mode = Literal["http", "browser", "ai"]
@@ -223,16 +223,24 @@ class SessionClient(AbstractAsyncContextManager["SessionClient"]):
             self._last_request_at = time.monotonic()
 
     def _timeout_seconds(self) -> float:
-        return float(self.site_config.timeout or getattr(self.settings, "scrape_timeout_seconds", 30.0))
+        configured_timeout = self.site_config.timeout
+        if configured_timeout:
+            return float(configured_timeout)
+        settings_timeout = getattr(self.settings, "scrape_timeout_seconds", 30.0)
+        return float(settings_timeout)
 
     def _verify_ssl(self) -> bool:
         global_verify = bool(getattr(self.settings, "scrape_verify_ssl", True))
         return global_verify and bool(self.site_config.verify_ssl)
 
     def _backoff_delay(self, attempt: int) -> float:
-        base = float(getattr(self.settings, "scrape_backoff_base_seconds", 1.5))
-        cap = float(getattr(self.settings, "scrape_backoff_cap_seconds", 12.0))
-        return min(cap, base * (2 ** max(0, attempt - 1)))
+        base = float(
+            cast(int | float | str, getattr(self.settings, "scrape_backoff_base_seconds", 1.5))
+        )
+        cap = float(
+            cast(int | float | str, getattr(self.settings, "scrape_backoff_cap_seconds", 12.0))
+        )
+        return float(min(cap, base * (2 ** max(0, attempt - 1))))
 
     def _retryable_status_codes(self) -> set[int]:
         return {408, 425, 429, 500, 502, 503, 504}
@@ -255,7 +263,11 @@ class SessionClient(AbstractAsyncContextManager["SessionClient"]):
             return "timeout"
         if isinstance(exc, (httpx.NetworkError, httpx.ProtocolError, httpx.TransportError)):
             return "network"
-        return "transient" if isinstance(exc, RuntimeError) and "temporar" in str(exc).lower() else "fatal"
+        return (
+            "transient"
+            if isinstance(exc, RuntimeError) and "temporar" in str(exc).lower()
+            else "fatal"
+        )
 
     def _headers(self) -> dict[str, str]:
         user_agents = list(getattr(self.settings, "user_agents", []) or [])
@@ -285,10 +297,10 @@ class SessionClient(AbstractAsyncContextManager["SessionClient"]):
         if strategy == "round_robin":
             proxy = pool[self._proxy_cursor % len(pool)]
             self._proxy_cursor += 1
-            return proxy
+            return cast(str, proxy)
         if strategy == "failover":
-            return min(pool, key=lambda value: self._proxy_failures.get(value, 0))
-        return self._rng.choice(pool)
+            return cast(str, min(pool, key=lambda value: self._proxy_failures.get(value, 0)))
+        return cast(str, self._rng.choice(pool))
 
     def _record_proxy_failure(self, proxy: str) -> None:
         self._proxy_failures[proxy] = self._proxy_failures.get(proxy, 0) + 1
@@ -346,7 +358,9 @@ class HttpxSessionClient(SessionClient):
         timeout = httpx.Timeout(self._timeout_seconds())
         limits = httpx.Limits(
             max_connections=max(1, int(getattr(self.settings, "http_max_connections", 30))),
-            max_keepalive_connections=max(1, int(getattr(self.settings, "http_max_keepalive_connections", 10))),
+            max_keepalive_connections=max(
+                1, int(getattr(self.settings, "http_max_keepalive_connections", 10))
+            ),
         )
         client = httpx.AsyncClient(
             follow_redirects=bool(getattr(self.settings, "scrape_follow_redirects", True)),
@@ -437,7 +451,9 @@ class PlaywrightSessionClient(SessionClient):
 
         page = await self._context.new_page()
         try:
-            response = await page.goto(url, wait_until="domcontentloaded", timeout=self._browser_timeout_ms())
+            response = await page.goto(
+                url, wait_until="domcontentloaded", timeout=self._browser_timeout_ms()
+            )
             if wait_selector:
                 try:
                     await page.wait_for_selector(
@@ -473,7 +489,9 @@ class PlaywrightSessionClient(SessionClient):
         clicked = await self._click_detail_reveal_targets(page)
         if clicked:
             try:
-                await page.wait_for_load_state("networkidle", timeout=min(3000, self._browser_timeout_ms()))
+                await page.wait_for_load_state(
+                    "networkidle", timeout=min(3000, self._browser_timeout_ms())
+                )
             except PlaywrightTimeoutError:
                 logger.info(
                     "Detail page did not reach network idle after contact reveal click",
@@ -505,7 +523,9 @@ class PlaywrightSessionClient(SessionClient):
                     clicks += 1
 
         try:
-            text_locator = page.locator("button, a, [role='button']").filter(has_text=DETAIL_REVEAL_TEXT_RE)
+            text_locator = page.locator("button, a, [role='button']").filter(
+                has_text=DETAIL_REVEAL_TEXT_RE
+            )
             count = await text_locator.count()
         except Exception:
             return clicks
@@ -560,7 +580,9 @@ class PlaywrightSessionClient(SessionClient):
             return False
 
 
-AISessionHandler = Callable[..., FetchResult | dict[str, Any] | Awaitable[FetchResult | dict[str, Any]]]
+AISessionHandler = Callable[
+    ..., FetchResult | dict[str, Any] | Awaitable[FetchResult | dict[str, Any]]
+]
 
 
 class AISessionClient(SessionClient):
@@ -634,6 +656,12 @@ def build_session_client(
     return session_class(settings=settings, site_config=site_config, site_profile=site_profile)
 
 
+HttpSessionClient = HttpxSessionClient
+DynamicBrowserSessionClient = PlaywrightSessionClient
+AIHandlerSessionClient = AISessionClient
+
+# Backward-compatible names for older imports. They no longer imply the Scrapling
+# runtime; dynamic mode is Playwright and AI mode delegates to a configured handler.
 HttpScraplingSession = HttpxSessionClient
 DynamicScraplingSession = PlaywrightSessionClient
 StealthScraplingSession = AISessionClient
@@ -642,8 +670,11 @@ ScraplingSessionClient = SessionClient
 
 __all__ = [
     "AISessionClient",
+    "AIHandlerSessionClient",
+    "DynamicBrowserSessionClient",
     "DynamicScraplingSession",
     "FetchResult",
+    "HttpSessionClient",
     "HttpScraplingSession",
     "HttpxSessionClient",
     "PlaywrightSessionClient",

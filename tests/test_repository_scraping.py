@@ -5,7 +5,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.scraping.contracts import ListingEnvelope, ScrapeExecutionResult, ScrapeSiteResult
+from app.scraping.contracts import (
+    ListingEnvelope,
+    ScrapeExecutionResult,
+    ScrapeSiteResult,
+    ValidationIssue,
+)
 from app.scraping.models import ScrapedListing
 from app.services import repository
 from tests.helpers import AsyncCursorStub, AsyncPoolStub
@@ -21,7 +26,7 @@ def _listing(*, ad_id: str = "A1", source_site: str = "example.com") -> ScrapedL
         size="54 m2",
         link=f"https://{source_site}/listing/{ad_id}",
         source_site=source_site,
-        phone="+380991112233",
+        phone="+359888123456",
         seller_name="Broker",
         ad_type="agency",
         contact_name="Owner",
@@ -53,9 +58,10 @@ class ScrapingRepositoryTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
-        self.assertEqual(len(cursor.executed), 2)
+        self.assertEqual(len(cursor.executed), 3)
         upsert_sql, upsert_params = cursor.executed[0]
-        cleanup_sql, cleanup_params = cursor.executed[1]
+        issues_sql, issues_params = cursor.executed[1]
+        cleanup_sql, cleanup_params = cursor.executed[2]
 
         self.assertIn("parser_version", upsert_sql)
         first_row = upsert_params[0]
@@ -63,6 +69,9 @@ class ScrapingRepositoryTests(unittest.TestCase):
         self.assertEqual(first_row[7], "example.com")
         self.assertEqual(first_row[8], "parser-v2")
         self.assertEqual(first_row[9], repository.LISTING_STATUS_ACTIVE)
+
+        self.assertIn("DELETE FROM listing_extraction_issues", issues_sql)
+        self.assertEqual(issues_params, ("example.com", "parser-v2"))
 
         self.assertIn("SET record_status = %s", cleanup_sql)
         self.assertEqual(
@@ -93,10 +102,56 @@ class ScrapingRepositoryTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
-        self.assertEqual(len(cursor.executed), 1)
-        cleanup_sql, cleanup_params = cursor.executed[0]
+        self.assertEqual(len(cursor.executed), 2)
+        issues_sql, issues_params = cursor.executed[0]
+        cleanup_sql, cleanup_params = cursor.executed[1]
+        self.assertIn("DELETE FROM listing_extraction_issues", issues_sql)
+        self.assertEqual(issues_params, ("example.com", "parser-v2"))
         self.assertIn("DELETE FROM listings", cleanup_sql)
         self.assertEqual(cleanup_params, ("example.com",))
+
+    def test_refresh_leads_stores_manual_review_status_and_issues(self) -> None:
+        cursor = AsyncCursorStub()
+        execution = ScrapeExecutionResult(
+            site_results=[
+                ScrapeSiteResult(
+                    site_name="example.com",
+                    strategy_name="http_strategy",
+                    accepted=[
+                        ListingEnvelope(
+                            listing=_listing(),
+                            fallback_action=repository.LISTING_STATUS_MANUAL_REVIEW,
+                            issues=[
+                                ValidationIssue(
+                                    code="missing_phone",
+                                    message="Phone was not extracted.",
+                                    field_name="phone",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ]
+        )
+
+        async def run_test() -> None:
+            with patch("app.services.repository.mysql_pool", return_value=AsyncPoolStub(cursor)):
+                written = await repository.refresh_leads(
+                    execution,
+                    parser_version="parser-v2",
+                    stale_strategy="mark",
+                )
+            self.assertEqual(written, 1)
+
+        asyncio.run(run_test())
+
+        upsert_params = cursor.executed[0][1]
+        first_row = upsert_params[0]
+        self.assertEqual(first_row[9], repository.LISTING_STATUS_MANUAL_REVIEW)
+
+        issue_insert_sql, issue_insert_params = cursor.executed[2]
+        self.assertIn("INSERT INTO listing_extraction_issues", issue_insert_sql)
+        self.assertEqual(issue_insert_params[0][7], "missing_phone")
 
     def test_list_leads_uses_only_active_rows_for_current_parser_version(self) -> None:
         cursor = AsyncCursorStub()

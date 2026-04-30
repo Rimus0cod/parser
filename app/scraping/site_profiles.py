@@ -75,93 +75,6 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         mode_order=("http", "browser", "ai"),
         selector_version="v2",
     ),
-    "dom.ria.com": SiteProfile(
-        name="dom.ria.com",
-        list_wait_selector="article, [data-testid], a[href*='/arenda-kvartir/']",
-        detail_wait_selector="main, article, body",
-        detail_contact_selectors=(
-            "[data-testid*='contact']",
-            "[data-testid*='phone']",
-            "[data-testid*='seller']",
-            "[class*='contact']",
-            "[class*='phone']",
-            "[class*='seller']",
-            "[class*='owner']",
-        ),
-        detail_click_selectors=(
-            "[data-testid*='phone']",
-            "[data-testid*='contact']",
-            "[class*='phone'] button",
-            "[class*='contact'] button",
-            "button[class*='phone']",
-            "button[class*='contact']",
-        ),
-        blocked_markers=(
-            "access denied",
-            "captcha",
-            "unusual traffic",
-        ),
-        requires_js_on=("javascript", "hydration", "__next"),
-        detail_requires_browser=True,
-        mode_order=("http", "browser", "ai"),
-        selector_version="v2",
-    ),
-    "olx.ua": SiteProfile(
-        name="olx.ua",
-        list_wait_selector="article, li, a[href*='/obyavlenie/'], a[href*='/d/uk/obyavlenie/']",
-        detail_wait_selector="main, article, body",
-        detail_contact_selectors=(
-            "[data-testid*='contact']",
-            "[data-testid*='phone']",
-            "[class*='contact']",
-            "[class*='phone']",
-            "[class*='seller']",
-            "[class*='owner']",
-        ),
-        detail_click_selectors=(
-            "[data-testid*='phone']",
-            "[data-testid*='contact']",
-            "button[class*='phone']",
-            "button[class*='contact']",
-        ),
-        blocked_markers=(
-            "access denied",
-            "captcha",
-            "verify you are a human",
-        ),
-        requires_js_on=("enable javascript", "noscript"),
-        detail_requires_browser=True,
-        mode_order=("http", "browser", "ai"),
-        selector_version="v2",
-    ),
-    "lun.ua": SiteProfile(
-        name="lun.ua",
-        list_wait_selector="article, section, a[href*='/rent/kyiv/flats/']",
-        detail_wait_selector="main, article, body",
-        detail_contact_selectors=(
-            "[data-testid*='contact']",
-            "[data-testid*='phone']",
-            "[class*='contact']",
-            "[class*='phone']",
-            "[class*='seller']",
-            "[class*='owner']",
-        ),
-        detail_click_selectors=(
-            "[data-testid*='phone']",
-            "[data-testid*='contact']",
-            "button[class*='phone']",
-            "button[class*='contact']",
-        ),
-        blocked_markers=(
-            "access denied",
-            "captcha",
-            "verify you are human",
-        ),
-        requires_js_on=("javascript", "__next", "hydration"),
-        detail_requires_browser=True,
-        mode_order=("http", "browser", "ai"),
-        selector_version="v2",
-    ),
 }
 
 
@@ -173,12 +86,20 @@ def get_site_profile(site_config: SiteConfig, settings: Settings | None = None) 
             dict.fromkeys(
                 [
                     *blocked_markers,
-                    *(marker.strip().lower() for marker in settings.scrapling_blocked_markers if marker.strip()),
+                    *(
+                        marker.strip().lower()
+                        for marker in settings.scrapling_blocked_markers
+                        if marker.strip()
+                    ),
                 ]
             )
         )
 
-    mode_order = tuple(_normalize_mode(mode) for mode in site_config.mode_order) if site_config.mode_order else base_profile.mode_order
+    mode_order = (
+        tuple(_normalize_mode(mode) for mode in site_config.mode_order)
+        if site_config.mode_order
+        else base_profile.mode_order
+    )
 
     return replace(
         base_profile,
