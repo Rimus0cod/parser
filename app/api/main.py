@@ -16,7 +16,7 @@ from app.services.scrape_lock import (
     release_scrape_lock,
     scrape_lock_ttl_seconds,
 )
-from app.services.repository import list_agencies, list_leads, record_scrape_execution, upsert_leads
+from app.services.repository import list_agencies, list_leads, record_scrape_execution, refresh_leads
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
@@ -52,7 +52,11 @@ async def _run_scrape_job(lock_token: str) -> None:
         engine = build_scraping_engine(settings)
         execution = await engine.scrape_all_sites()
         leads = execution.listings
-        written = await upsert_leads(leads)
+        written = await refresh_leads(
+            execution,
+            parser_version=settings.scrape_data_version,
+            stale_strategy=settings.scrape_stale_strategy,
+        )
         await record_scrape_execution(execution)
         redis.set("scrape:last_status", "ok")
         redis.set("scrape:last_written", str(written))

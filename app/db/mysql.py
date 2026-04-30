@@ -74,6 +74,8 @@ async def init_schema() -> None:
                         size VARCHAR(50),
                         link TEXT,
                         source_site VARCHAR(120) NOT NULL DEFAULT '',
+                        parser_version VARCHAR(64) NOT NULL DEFAULT 'legacy',
+                        record_status VARCHAR(32) NOT NULL DEFAULT 'active',
                         phone VARCHAR(50),
                         seller_name VARCHAR(255),
                         ad_type VARCHAR(50),
@@ -96,6 +98,47 @@ async def init_schema() -> None:
                     except OperationalError as exc:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
                             raise
+
+                await cur.execute("SHOW COLUMNS FROM listings LIKE 'parser_version'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute(
+                            """
+                            ALTER TABLE listings
+                            ADD COLUMN parser_version VARCHAR(64) NOT NULL DEFAULT 'legacy' AFTER source_site
+                            """
+                        )
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
+                            raise
+
+                await cur.execute("SHOW COLUMNS FROM listings LIKE 'record_status'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute(
+                            """
+                            ALTER TABLE listings
+                            ADD COLUMN record_status VARCHAR(32) NOT NULL DEFAULT 'active' AFTER parser_version
+                            """
+                        )
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
+                            raise
+
+                await cur.execute(
+                    """
+                    UPDATE listings
+                    SET parser_version = 'legacy'
+                    WHERE parser_version IS NULL OR parser_version = ''
+                    """
+                )
+                await cur.execute(
+                    """
+                    UPDATE listings
+                    SET record_status = 'active'
+                    WHERE record_status IS NULL OR record_status = ''
+                    """
+                )
 
                 await cur.execute(
                     """
@@ -172,6 +215,19 @@ async def init_schema() -> None:
                 if await cur.fetchone() is None:
                     try:
                         await cur.execute("CREATE INDEX idx_listings_source_site ON listings (source_site)")
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
+                            raise
+
+                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_visibility'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute(
+                            """
+                            CREATE INDEX idx_listings_visibility
+                            ON listings (record_status, parser_version, date_seen)
+                            """
+                        )
                     except OperationalError as exc:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
                             raise

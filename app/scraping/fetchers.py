@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import random
+import re
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
@@ -46,6 +47,24 @@ MODE_ALIASES: dict[str, Mode] = {
 }
 
 logger = get_logger("scraping_fetchers")
+
+DETAIL_REVEAL_TEXT_RE = re.compile(
+    r"(show|contact|contacts|phone|call|email|e-mail|"
+    r"показ|контакт|контакти|контакты|телефон|телефоны|"
+    r"подзвон|дзвон|зателефон|email|пошта|почта)",
+    flags=re.I,
+)
+GENERIC_DETAIL_CLICK_SELECTORS: tuple[str, ...] = (
+    "button",
+    "[role='button']",
+    "[data-testid*='phone']",
+    "[data-testid*='contact']",
+    "[class*='phone'] button",
+    "[class*='contact'] button",
+    "button[class*='phone']",
+    "button[class*='contact']",
+    "button[class*='show']",
+)
 
 
 @dataclass(slots=True)
@@ -412,7 +431,7 @@ class PlaywrightSessionClient(SessionClient):
         wait_selector: str,
         proxy: str | None,
     ) -> FetchResult:
-        del page_kind, proxy
+        del proxy
         if self._context is None:
             raise RuntimeError("Playwright browser context is not initialized.")
 
@@ -434,6 +453,8 @@ class PlaywrightSessionClient(SessionClient):
                         url=url,
                         wait_selector=wait_selector,
                     )
+            if page_kind == "detail":
+                await self._prepare_detail_page(page)
             markup = await page.content()
             final_url = page.url or url
             status_code = response.status if response is not None else None
@@ -447,6 +468,96 @@ class PlaywrightSessionClient(SessionClient):
 
     def _browser_timeout_ms(self) -> int:
         return max(1000, int(self._timeout_seconds() * 1000))
+
+    async def _prepare_detail_page(self, page: Any) -> None:
+        clicked = await self._click_detail_reveal_targets(page)
+        if clicked:
+            try:
+                await page.wait_for_load_state("networkidle", timeout=min(3000, self._browser_timeout_ms()))
+            except PlaywrightTimeoutError:
+                logger.info(
+                    "Detail page did not reach network idle after contact reveal click",
+                    site=self.site_config.name,
+                    mode=self.mode,
+                    clicks=clicked,
+                )
+
+    async def _click_detail_reveal_targets(self, page: Any) -> int:
+        selectors = tuple(
+            dict.fromkeys(
+                [
+                    *self.site_profile.detail_click_selectors,
+                    *GENERIC_DETAIL_CLICK_SELECTORS,
+                ]
+            )
+        )
+        clicks = 0
+        for selector in selectors:
+            if clicks >= 4:
+                return clicks
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+            except Exception:
+                continue
+            for index in range(min(count, 2)):
+                if await self._click_locator(locator.nth(index)):
+                    clicks += 1
+
+        try:
+            text_locator = page.locator("button, a, [role='button']").filter(has_text=DETAIL_REVEAL_TEXT_RE)
+            count = await text_locator.count()
+        except Exception:
+            return clicks
+
+        for index in range(min(count, 3)):
+            if clicks >= 4:
+                return clicks
+            if await self._click_locator(text_locator.nth(index)):
+                clicks += 1
+        return clicks
+
+    async def _click_locator(self, locator: Any) -> bool:
+        try:
+            href = await locator.get_attribute("href")
+        except Exception:
+            href = None
+
+        if href and not href.startswith(("#", "javascript:")):
+            return False
+
+        try:
+            text_content = await locator.text_content() or ""
+        except Exception:
+            text_content = ""
+        metadata_parts = [text_content]
+        for attr_name in ("aria-label", "data-testid", "class", "title"):
+            try:
+                value = await locator.get_attribute(attr_name)
+            except Exception:
+                value = None
+            if value:
+                metadata_parts.append(value)
+        if not DETAIL_REVEAL_TEXT_RE.search(" ".join(metadata_parts)):
+            return False
+
+        try:
+            if not await locator.is_visible():
+                return False
+        except Exception:
+            return False
+
+        try:
+            await locator.scroll_into_view_if_needed(timeout=1000)
+        except Exception:
+            return False
+
+        try:
+            await locator.click(timeout=2000)
+            await asyncio.sleep(0.35)
+            return True
+        except Exception:
+            return False
 
 
 AISessionHandler = Callable[..., FetchResult | dict[str, Any] | Awaitable[FetchResult | dict[str, Any]]]

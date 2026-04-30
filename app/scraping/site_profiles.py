@@ -22,6 +22,8 @@ class SiteProfile:
     name: str
     list_wait_selector: str = ""
     detail_wait_selector: str = ""
+    detail_contact_selectors: tuple[str, ...] = ()
+    detail_click_selectors: tuple[str, ...] = ()
     blocked_markers: tuple[str, ...] = ()
     requires_js_on: tuple[str, ...] = ()
     detail_requires_browser: bool = False
@@ -34,6 +36,13 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         name="imoti.bg",
         list_wait_selector="article.product-classic, a[href*='/Ð½Ð°ÐµÐ¼Ð¸/']",
         detail_wait_selector="main, article, body",
+        detail_contact_selectors=(
+            "[class*='contact']",
+            "[class*='phone']",
+            "[class*='broker']",
+            "[class*='owner']",
+            "[class*='agency']",
+        ),
         blocked_markers=(
             "just a moment",
             "cloudflare",
@@ -49,6 +58,13 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         name="alo.bg",
         list_wait_selector=".list, .listvip, .list-obj, article, a[href*='/obiava/']",
         detail_wait_selector="main, article, body",
+        detail_contact_selectors=(
+            "[class*='contact']",
+            "[class*='phone']",
+            "[class*='seller']",
+            "[class*='owner']",
+            "[class*='agency']",
+        ),
         blocked_markers=(
             "access denied",
             "captcha",
@@ -63,6 +79,23 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         name="dom.ria.com",
         list_wait_selector="article, [data-testid], a[href*='/arenda-kvartir/']",
         detail_wait_selector="main, article, body",
+        detail_contact_selectors=(
+            "[data-testid*='contact']",
+            "[data-testid*='phone']",
+            "[data-testid*='seller']",
+            "[class*='contact']",
+            "[class*='phone']",
+            "[class*='seller']",
+            "[class*='owner']",
+        ),
+        detail_click_selectors=(
+            "[data-testid*='phone']",
+            "[data-testid*='contact']",
+            "[class*='phone'] button",
+            "[class*='contact'] button",
+            "button[class*='phone']",
+            "button[class*='contact']",
+        ),
         blocked_markers=(
             "access denied",
             "captcha",
@@ -77,6 +110,20 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         name="olx.ua",
         list_wait_selector="article, li, a[href*='/obyavlenie/'], a[href*='/d/uk/obyavlenie/']",
         detail_wait_selector="main, article, body",
+        detail_contact_selectors=(
+            "[data-testid*='contact']",
+            "[data-testid*='phone']",
+            "[class*='contact']",
+            "[class*='phone']",
+            "[class*='seller']",
+            "[class*='owner']",
+        ),
+        detail_click_selectors=(
+            "[data-testid*='phone']",
+            "[data-testid*='contact']",
+            "button[class*='phone']",
+            "button[class*='contact']",
+        ),
         blocked_markers=(
             "access denied",
             "captcha",
@@ -91,6 +138,20 @@ _DEFAULT_PROFILES: dict[str, SiteProfile] = {
         name="lun.ua",
         list_wait_selector="article, section, a[href*='/rent/kyiv/flats/']",
         detail_wait_selector="main, article, body",
+        detail_contact_selectors=(
+            "[data-testid*='contact']",
+            "[data-testid*='phone']",
+            "[class*='contact']",
+            "[class*='phone']",
+            "[class*='seller']",
+            "[class*='owner']",
+        ),
+        detail_click_selectors=(
+            "[data-testid*='phone']",
+            "[data-testid*='contact']",
+            "button[class*='phone']",
+            "button[class*='contact']",
+        ),
         blocked_markers=(
             "access denied",
             "captcha",

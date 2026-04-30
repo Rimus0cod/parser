@@ -58,6 +58,77 @@ PHONE_RE = re.compile(
     r"(?:\+?359[\s-]?\d[\d\s-]{7,12}|\+?380[\s-]?\d[\d\s-]{8,12}|0\d[\d\s-]{7,11})"
 )
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", flags=re.I)
+CONTACT_SECTION_SELECTORS: tuple[str, ...] = (
+    "[data-testid*='contact']",
+    "[data-testid*='phone']",
+    "[data-testid*='seller']",
+    "[class*='contact']",
+    "[class*='phone']",
+    "[class*='seller']",
+    "[class*='owner']",
+    "[class*='agent']",
+    "[class*='broker']",
+    "[itemprop='seller']",
+    "[itemprop='author']",
+)
+CONTACT_KEYWORDS: tuple[str, ...] = (
+    "contact",
+    "contacts",
+    "phone",
+    "call",
+    "email",
+    "seller",
+    "owner",
+    "agent",
+    "broker",
+    "контакт",
+    "контакти",
+    "контакты",
+    "телефон",
+    "телефоны",
+    "власник",
+    "власниця",
+    "имя",
+    "iм'я",
+    "ім'я",
+    "rieltor",
+    "рієлтор",
+    "риелтор",
+    "пошта",
+    "почта",
+)
+CONTACT_LABEL_RE = re.compile(
+    r"^(?:contact|contacts|contact person|phone|email|seller|owner|agent|broker|"
+    r"контакт(?:на|ное)?(?:\s+особа|\s+лицо)?|контакти|контакты|"
+    r"телефон(?:ы)?|власник|власниця|iм'я|ім'я|имя|рієлтор|риелтор)\s*[:\-]?\s*",
+    flags=re.I,
+)
+AGENCY_WORDS: tuple[str, ...] = (
+    "agency",
+    "agency.",
+    "broker",
+    "agent",
+    "realtor",
+    "realty",
+    "estate",
+    "agencyalpha",
+    "аген",
+    "агент",
+    "брокер",
+    "рієлт",
+    "риелт",
+)
+INVALID_NAME_MARKERS: tuple[str, ...] = (
+    "http",
+    "www.",
+    "icon",
+    "font",
+    "fallback",
+    "roboto",
+    "arial",
+    "mailto:",
+    "tel:",
+)
 
 
 @dataclass(slots=True)
@@ -142,11 +213,13 @@ class ListingExtractor:
 
     def enrich_listing(self, page: Any, listing: ScrapedListing) -> ScrapedListing:
         raw_text = self._node_text(page)
-        phone = self._find_by_regex_text(page, PHONE_RE)
-        if phone:
-            listing.phone = self._clean_phone(phone)
+        contact_sections = self._detail_contact_sections(page)
 
-        email = self._find_by_regex_text(page, EMAIL_RE)
+        phone = self._extract_phone_from_sections(contact_sections) or self._extract_phone_from_text(raw_text)
+        if phone:
+            listing.phone = phone
+
+        email = self._extract_email_from_sections(contact_sections) or self._extract_email_from_text(raw_text)
         if email:
             listing.contact_email = email
 
@@ -155,13 +228,31 @@ class ListingExtractor:
         if not listing.size:
             listing.size = self._extract_size(raw_text)
         if not listing.contact_name or listing.contact_name == "-":
-            listing.contact_name = self.seller_or_contact_name(raw_text, listing.seller_name)
+            listing.contact_name = self.seller_or_contact_name(
+                raw_text,
+                listing.seller_name,
+                contact_sections=contact_sections,
+            )
 
         return listing
 
-    def seller_or_contact_name(self, raw_text: str, seller_name: str) -> str:
-        seller_name = self._clean_text(seller_name)
-        return seller_name or self._guess_contact_name(raw_text)
+    def seller_or_contact_name(
+        self,
+        raw_text: str,
+        seller_name: str,
+        *,
+        contact_sections: list[Any] | None = None,
+    ) -> str:
+        seller_candidate = self._clean_contact_name_candidate(seller_name)
+        if seller_candidate:
+            return seller_candidate
+
+        for section in contact_sections or []:
+            section_name = self._extract_name_from_text(self._node_text(section))
+            if section_name:
+                return section_name
+
+        return self._guess_contact_name(raw_text)
 
     def _collect_cards(self, page: Any, context: SelectorContext) -> list[Any]:
         card_selector = self.site_config.selectors.get("card", "article, li, section, div")
@@ -259,6 +350,14 @@ class ListingExtractor:
             return False
         return False
 
+    def _css_all(self, node: Any, selector: str) -> list[Any]:
+        if not selector:
+            return []
+        try:
+            return list(node.css(selector))
+        except Exception:
+            return []
+
     def _find_similar(self, node: Any) -> list[Any]:
         try:
             similar = node.find_similar()
@@ -333,6 +432,10 @@ class ListingExtractor:
 
     def _clean_phone(self, value: str) -> str:
         cleaned = re.sub(r"[^\d+]", "", value or "")
+        if cleaned.count("+") > 1:
+            cleaned = f"+{cleaned.replace('+', '')}"
+        if "+" in cleaned and not cleaned.startswith("+"):
+            cleaned = f"+{cleaned.replace('+', '')}"
         return cleaned[:20]
 
     def _link_looks_like_listing(self, link: str) -> bool:
@@ -414,11 +517,185 @@ class ListingExtractor:
         return "private"
 
     def _guess_contact_name(self, text: str) -> str:
-        sentences = [chunk.strip() for chunk in re.split(r"[,.]", text) if chunk.strip()]
-        for sentence in sentences[:10]:
-            if len(sentence.split()) in {2, 3} and not PRICE_RE.search(sentence):
-                return sentence[:120]
+        chunks = [chunk.strip() for chunk in re.split(r"[\n|;]+", text) if chunk.strip()]
+        prioritized = [chunk for chunk in chunks if any(keyword in chunk.lower() for keyword in CONTACT_KEYWORDS)]
+        for chunk in prioritized[:15]:
+            candidate = self._extract_name_from_text(chunk)
+            if candidate:
+                return candidate
         return "-"
+
+    def _detail_contact_sections(self, page: Any) -> list[Any]:
+        selectors = tuple(
+            dict.fromkeys(
+                [
+                    *(self.site_profile.detail_contact_selectors if self.site_profile is not None else ()),
+                    *CONTACT_SECTION_SELECTORS,
+                ]
+            )
+        )
+        sections: list[Any] = []
+        seen_signatures: set[str] = set()
+        for selector in selectors:
+            for node in self._css_all(page, selector):
+                signature = self._section_signature(node)
+                if signature in seen_signatures:
+                    continue
+                seen_signatures.add(signature)
+                if self._node_looks_like_contact_block(node):
+                    sections.append(node)
+        return sections or [page]
+
+    def _section_signature(self, node: Any) -> str:
+        attrs = " ".join(
+            filter(
+                None,
+                (
+                    self._node_attr(node, "class"),
+                    self._node_attr(node, "data-testid"),
+                    self._node_attr(node, "href"),
+                ),
+            )
+        )
+        return hashlib.sha256(f"{attrs}::{self._node_text(node)[:300]}".encode("utf-8")).hexdigest()
+
+    def _node_looks_like_contact_block(self, node: Any) -> bool:
+        text = self._node_text(node)
+        if PHONE_RE.search(text) or EMAIL_RE.search(text):
+            return True
+
+        lowered = text.lower()
+        if any(keyword in lowered for keyword in CONTACT_KEYWORDS):
+            return True
+
+        for link in self._css_all(node, "a[href]"):
+            href = self._node_attr(link, "href").lower()
+            if href.startswith("tel:") or href.startswith("mailto:"):
+                return True
+        return False
+
+    def _extract_phone_from_sections(self, sections: list[Any]) -> str:
+        for section in sections:
+            for link in self._css_all(section, "a[href]"):
+                phone = self._extract_phone_from_href(self._node_attr(link, "href"))
+                if phone:
+                    return phone
+                phone = self._extract_phone_from_text(self._node_text(link))
+                if phone:
+                    return phone
+
+        for section in sections:
+            phone = self._extract_phone_from_text(self._node_text(section))
+            if phone:
+                return phone
+        return ""
+
+    def _extract_phone_from_href(self, href: str) -> str:
+        if not href.lower().startswith("tel:"):
+            return ""
+        return self._extract_phone_from_text(href.removeprefix("tel:"))
+
+    def _extract_phone_from_text(self, text: str) -> str:
+        for match in PHONE_RE.finditer(text or ""):
+            phone = self._clean_phone(match.group(0))
+            if self._is_valid_phone_candidate(phone):
+                return phone
+        return ""
+
+    def _is_valid_phone_candidate(self, phone: str) -> bool:
+        digits = re.sub(r"\D", "", phone)
+        if not digits:
+            return False
+
+        min_length = 10 if self.site_config.name in {"dom.ria.com", "olx.ua", "lun.ua"} else 9
+        if len(digits) < min_length or len(digits) > 15:
+            return False
+        if len(set(digits)) == 1:
+            return False
+        return True
+
+    def _extract_email_from_sections(self, sections: list[Any]) -> str:
+        for section in sections:
+            for link in self._css_all(section, "a[href]"):
+                email = self._extract_email_from_href(self._node_attr(link, "href"))
+                if email:
+                    return email
+                email = self._extract_email_from_text(self._node_text(link))
+                if email:
+                    return email
+
+        for section in sections:
+            email = self._extract_email_from_text(self._node_text(section))
+            if email:
+                return email
+        return ""
+
+    def _extract_email_from_href(self, href: str) -> str:
+        if not href.lower().startswith("mailto:"):
+            return ""
+        return self._extract_email_from_text(href.removeprefix("mailto:"))
+
+    def _extract_email_from_text(self, text: str) -> str:
+        match = EMAIL_RE.search(text or "")
+        if match is None:
+            return ""
+        return match.group(0).strip().lower()[:255]
+
+    def _extract_name_from_text(self, text: str) -> str:
+        compact = self._clean_text(text)
+        if not compact:
+            return ""
+
+        label_match = re.search(
+            r"(?:contact person|contact|owner|seller|agent|broker|"
+            r"контакт(?:на|ное)?(?:\s+особа|\s+лицо)?|власник|власниця|"
+            r"iм'я|ім'я|имя|рієлтор|риелтор)\s*[:\-]?\s*(?P<name>[^|,;]{2,80})",
+            compact,
+            flags=re.I,
+        )
+        if label_match:
+            candidate = self._clean_contact_name_candidate(label_match.group("name"))
+            if candidate:
+                return candidate
+
+        for chunk in re.split(r"[\n|;,]+", compact):
+            candidate = self._clean_contact_name_candidate(chunk)
+            if candidate:
+                return candidate
+        return ""
+
+    def _clean_contact_name_candidate(self, value: str) -> str:
+        candidate = self._clean_text(value)
+        if not candidate or candidate == "-":
+            return ""
+
+        candidate = re.sub(r"https?://\S+|www\.\S+", " ", candidate, flags=re.I)
+        candidate = EMAIL_RE.sub(" ", candidate)
+        candidate = PHONE_RE.sub(" ", candidate)
+        candidate = CONTACT_LABEL_RE.sub("", candidate)
+        candidate = re.sub(r"[|;:/]+", " ", candidate)
+        candidate = self._clean_text(candidate)
+        lowered = candidate.lower()
+
+        if not candidate or any(marker in lowered for marker in INVALID_NAME_MARKERS):
+            return ""
+        if any(token in lowered for token in AGENCY_WORDS):
+            return ""
+        if any(char.isdigit() for char in candidate):
+            return ""
+        if "@" in candidate:
+            return ""
+
+        words = re.findall(r"[A-Za-zÀ-ÿА-Яа-яІіЇїЄєҐґ'’-]+", candidate)
+        if not 1 <= len(words) <= 4:
+            return ""
+        if sum(len(word) for word in words) < 4:
+            return ""
+
+        cleaned = " ".join(words)
+        if any(keyword == cleaned.lower() for keyword in CONTACT_KEYWORDS):
+            return ""
+        return cleaned[:120]
 
     def _title_from_url(self, link: str) -> str:
         path = urlparse(link).path.rstrip("/").split("/")[-1]

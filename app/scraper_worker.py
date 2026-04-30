@@ -12,7 +12,7 @@ from app.core.logging import capture_exception, configure_logging, get_logger
 from app.db.mysql import init_schema
 from app.scraping import build_scraping_engine
 from app.scraping.models import ScrapedListing
-from app.services.repository import record_scrape_execution, upsert_leads
+from app.services.repository import record_scrape_execution, refresh_leads
 from app.services.scrape_lock import (
     acquire_scrape_lock,
     release_scrape_lock,
@@ -125,7 +125,11 @@ async def run_once(settings: Settings | None = None) -> int:
         engine = build_scraping_engine(settings)
         execution = await engine.scrape_all_sites()
         listings = execution.listings
-        written = await upsert_leads(listings)
+        written = await refresh_leads(
+            execution,
+            parser_version=settings.scrape_data_version,
+            stale_strategy=settings.scrape_stale_strategy,
+        )
         await record_scrape_execution(execution)
         await send_to_integrations(listings)
 

@@ -5,6 +5,7 @@ import unittest
 
 from app.core.config import SiteConfig
 from app.scraping.extractor import ListingExtractor
+from app.scraping.html_adapter import parse_html_document
 from app.scraping.site_profiles import SiteProfile
 
 
@@ -127,6 +128,80 @@ class ListingExtractorTests(unittest.TestCase):
 
         detail_page = _FakeNode("detail text")
         self.assertEqual(extractor.detect_detail_page_issue(detail_page), "detail_requires_browser:body")
+
+    def test_extractor_prefers_contact_block_links_over_global_page_number(self) -> None:
+        site = SiteConfig(
+            name="dom.ria.com",
+            base_url="https://dom.ria.com/uk/arenda-kvartir/",
+            selectors={
+                "card": "article",
+                "title": "a[href]",
+                "link": "a[href]",
+            },
+            listing_path_keywords=["/uk/arenda-kvartir/"],
+            allowed_domains=["dom.ria.com"],
+        )
+        profile = SiteProfile(
+            name="dom.ria.com",
+            detail_wait_selector="body",
+            detail_contact_selectors=("[class*='contact']",),
+            detail_requires_browser=True,
+        )
+        extractor = ListingExtractor(site, profile)
+
+        listing = extractor._parse_card(
+            card=_FakeNode(
+                "Apartment 25000 UAH Kyiv, Center 50 м²",
+                selectors={
+                    "a[href]": [_FakeNode("Apartment", attrs={"href": "/uk/arenda-kvartir/kyiv-flat-12345/"})],
+                },
+            ),
+            base_url="https://dom.ria.com/uk/arenda-kvartir/",
+            position=0,
+        )
+        assert listing is not None
+
+        tel_link = _FakeNode("+380 67 123 45 67", attrs={"href": "tel:+380671234567"})
+        mail_link = _FakeNode("owner@example.com", attrs={"href": "mailto:owner@example.com"})
+        contact_block = _FakeNode(
+            "Контактна особа Іван Петренко",
+            selectors={"a[href]": [tel_link, mail_link]},
+        )
+        detail_page = _FakeNode(
+            "019607843 header number Roboto ArialFallBack icon:https://dom.ria.com",
+            selectors={
+                "[class*='contact']": [contact_block],
+                "a[href]": [],
+            },
+        )
+
+        enriched = extractor.enrich_listing(detail_page, listing)
+
+        self.assertEqual(enriched.phone, "+380671234567")
+        self.assertEqual(enriched.contact_email, "owner@example.com")
+        self.assertEqual(enriched.contact_name, "Іван Петренко")
+
+    def test_html_adapter_ignores_script_and_style_text(self) -> None:
+        page = parse_html_document(
+            """
+            <html>
+              <head>
+                <style>.x{font-family:Roboto,ArialFallBack}</style>
+                <script>window.icon='https://dom.ria.com';</script>
+              </head>
+              <body>
+                <main>Контактна особа Іван Петренко</main>
+              </body>
+            </html>
+            """,
+            url="https://example.com/listing/1",
+        )
+
+        text = page.text_content()
+
+        self.assertIn("Контактна особа Іван Петренко", text)
+        self.assertNotIn("Roboto", text)
+        self.assertNotIn("icon", text)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ from typing import Iterable
 
 from lxml import etree, html
 
+_HIDDEN_TEXT_TAGS = {"script", "style", "noscript", "svg", "path", "use"}
+
 
 @dataclass(slots=True, frozen=True)
 class _AttributeCondition:
@@ -89,7 +91,7 @@ class HtmlNode:
         return element
 
     def text_content(self) -> str:
-        return _clean_space(" ".join(self._element.itertext()))
+        return _clean_space(" ".join(_iter_visible_text(self._element)))
 
     def get_all_text(self) -> str:
         return self.text_content()
@@ -318,6 +320,26 @@ def _matches_selector(element: etree._Element, selector: _SimpleSelector) -> boo
 
 def _clean_space(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _iter_visible_text(element: etree._Element) -> Iterable[str]:
+    if not isinstance(element.tag, str):
+        return
+
+    tag_name = element.tag.lower()
+    if tag_name in _HIDDEN_TEXT_TAGS:
+        if element.tail:
+            yield element.tail
+        return
+
+    if element.text:
+        yield element.text
+
+    for child in element:
+        yield from _iter_visible_text(child)
+
+    if element.tail:
+        yield element.tail
 
 
 __all__ = ["HtmlDocument", "HtmlNode", "RegexMatch", "parse_html_document"]

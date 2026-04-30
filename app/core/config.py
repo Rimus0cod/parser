@@ -214,6 +214,8 @@ class Settings(BaseSettings):
     scrape_interval_seconds: int = 900
     scrape_concurrency: int = 8
     scrape_retry_count: int = 3
+    scrape_data_version: str = "v2"
+    scrape_stale_strategy: Literal["mark", "delete"] = "mark"
     scrape_backoff_base_seconds: float = 1.5
     scrape_backoff_cap_seconds: float = 12.0
     scrape_delay_min_seconds: float = 0.15
