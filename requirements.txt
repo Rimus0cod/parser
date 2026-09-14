@@ -22,6 +22,10 @@ mysql-connector-python>=9.0.0  # MySQL driver for persistence
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0        # Load .env files into os.environ
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+greenlet>=3.0.3
+pymysql>=1.1.0
 
 # ── Data manipulation ─────────────────────────────────────────────────────────
 pandas>=2.1.0               # DataFrame used by agency_contacts.enrich_dataframe()
@@ -30,7 +34,7 @@ pandas>=2.1.0               # DataFrame used by agency_contacts.enrich_dataframe
 rich>=13.7.0                # Beautiful terminal output with colour and tables              # Beautiful terminal output with colour and tables
 sentry-sdk[aiohttp,httpx]>=2.19.0  # Error tracking used by app.core.logging
 structlog>=24.4.0
-python -m compileall app/core/logging.py app/services/async_scraper.py app/core/config.py
+# python -m compileall app/core/logging.py app/services/async_scraper.py app/core/config.py
 # ── Optional: APScheduler for in-process background scheduling ────────────────
 # Uncomment if you prefer running as a long-lived daemon instead of cron.
 # apscheduler>=3.10.0

@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
-
-import aiomysql
-from pymysql.err import OperationalError
+from typing import AsyncGenerator, Generator
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
-MYSQL_DUPLICATE_KEY_ERROR = 1061
-MYSQL_DUPLICATE_COLUMN_ERROR = 1060
-
 
 def _effective_mysql_password() -> str:
     settings = get_settings()
@@ -25,142 +21,28 @@ def _effective_mysql_password() -> str:
         return settings.mysql_root_password
     return settings.mysql_password
 
-
-@asynccontextmanager
-async def mysql_pool() -> AsyncIterator[aiomysql.Pool]:
+def get_async_database_url() -> str:
     settings = get_settings()
-    pool = await aiomysql.create_pool(
-        host=settings.mysql_host,
-        port=settings.mysql_port,
-        user=settings.mysql_user,
-        password=_effective_mysql_password(),
-        db=settings.mysql_database,
-        autocommit=True,
-        minsize=1,
-        maxsize=10,
-        connect_timeout=10,
-        charset="utf8mb4",
-    )
-    try:
-        yield pool
-    finally:
-        pool.close()
-        await pool.wait_closed()
+    password = _effective_mysql_password()
+    return f"mysql+aiomysql://{settings.mysql_user}:{password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}?charset=utf8mb4"
 
+def get_sync_database_url() -> str:
+    settings = get_settings()
+    password = _effective_mysql_password()
+    return f"mysql+pymysql://{settings.mysql_user}:{password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}?charset=utf8mb4"
 
-async def init_schema() -> None:
-    async with mysql_pool() as pool:
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS listings (
-                        ad_id VARCHAR(50) PRIMARY KEY,
-                        date_seen DATE NOT NULL,
-                        title TEXT,
-                        price VARCHAR(100),
-                        location VARCHAR(255),
-                        size VARCHAR(50),
-                        link TEXT,
-                        source_site VARCHAR(120) NOT NULL DEFAULT '',
-                        phone VARCHAR(50),
-                        seller_name VARCHAR(255),
-                        ad_type VARCHAR(50),
-                        contact_name VARCHAR(255),
-                        contact_email VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                    """
-                )
-                await cur.execute("SHOW COLUMNS FROM listings LIKE 'source_site'")
-                if await cur.fetchone() is None:
-                    try:
-                        await cur.execute(
-                            """
-                            ALTER TABLE listings
-                            ADD COLUMN source_site VARCHAR(120) NOT NULL DEFAULT '' AFTER link
-                            """
-                        )
-                    except OperationalError as exc:
-                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
-                            raise
+# Global engines
+async_engine = create_async_engine(get_async_database_url(), pool_pre_ping=True, pool_size=10, max_overflow=20)
+sync_engine = create_engine(get_sync_database_url(), pool_pre_ping=True, pool_size=10, max_overflow=20)
 
-                await cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS agencies (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        agency_name VARCHAR(255) NOT NULL,
-                        phones TEXT,
-                        city VARCHAR(100),
-                        email VARCHAR(255),
-                        contact_name VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                    """
-                )
-                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_date_seen'")
-                if await cur.fetchone() is None:
-                    try:
-                        await cur.execute("CREATE INDEX idx_listings_date_seen ON listings (date_seen)")
-                    except OperationalError as exc:
-                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
-                            raise
+AsyncSessionLocal = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
+SessionLocal = sessionmaker(sync_engine, expire_on_commit=False, class_=Session)
 
-                await cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tenant_contacts (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        full_name VARCHAR(255) NOT NULL DEFAULT '',
-                        phone_raw VARCHAR(64) NOT NULL,
-                        phone_normalized VARCHAR(32) NOT NULL,
-                        phone_e164 VARCHAR(32) NOT NULL DEFAULT '',
-                        notes TEXT,
-                        import_source VARCHAR(255) NOT NULL DEFAULT '',
-                        active BOOLEAN NOT NULL DEFAULT TRUE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY uniq_tenant_phone_normalized (phone_normalized)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                    """
-                )
+async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
 
-                await cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS voice_calls (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        source_type VARCHAR(50) NOT NULL,
-                        listing_ad_id VARCHAR(50) NULL,
-                        tenant_contact_id INT NULL,
-                        twilio_call_sid VARCHAR(64) NULL,
-                        contact_name VARCHAR(255) NOT NULL DEFAULT '',
-                        phone_raw VARCHAR(64) NOT NULL DEFAULT '',
-                        phone_e164 VARCHAR(32) NOT NULL DEFAULT '',
-                        status VARCHAR(50) NOT NULL DEFAULT 'queued',
-                        script_name VARCHAR(120) NOT NULL DEFAULT '',
-                        answers_json JSON NULL,
-                        transcript LONGTEXT NULL,
-                        recording_url TEXT NULL,
-                        last_error TEXT NULL,
-                        initiated_by VARCHAR(120) NOT NULL DEFAULT '',
-                        started_at DATETIME NULL,
-                        answered_at DATETIME NULL,
-                        completed_at DATETIME NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        KEY idx_voice_calls_status (status),
-                        KEY idx_voice_calls_listing_ad_id (listing_ad_id),
-                        KEY idx_voice_calls_tenant_contact_id (tenant_contact_id),
-                        UNIQUE KEY uniq_voice_calls_twilio_call_sid (twilio_call_sid)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
-                    """
-                )
+def get_sync_db() -> Generator[Session, None, None]:
+    with SessionLocal() as session:
+        yield session
 
-                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_source_site'")
-                if await cur.fetchone() is None:
-                    try:
-                        await cur.execute("CREATE INDEX idx_listings_source_site ON listings (source_site)")
-                    except OperationalError as exc:
-                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
-                            raise
