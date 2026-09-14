@@ -1,0 +1,8 @@
+{
+  "name": "Real Estate SaaS Core",
+  "description": "Production-oriented platform for asynchronous real-estate scraping with API, worker, and operator dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
