@@ -10,7 +10,13 @@ from app.core.logging import configure_logging, get_logger
 from app.db.mysql import init_schema
 from app.models.schemas import Agency, Lead, LeadStatusUpdate, TriggerScrapeResponse
 from app.services.async_scraper import MultiSiteScraper
-from app.services.repository import get_listing_by_ad_id, list_agencies, list_leads, update_lead_status, upsert_leads
+from app.services.repository import (
+    get_listing_by_ad_id,
+    list_agencies,
+    list_leads,
+    update_lead_status,
+    upsert_leads,
+)
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
