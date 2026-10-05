@@ -142,7 +142,7 @@ async def handle_media_message(
         )
         manager.register_stream(call_sid, stream_sid)
         manager.ensure_stream(call_sid)
-        return call_sid
+        return cast(str, call_sid)
 
     if event == "media":
         media_payload = payload.get("media", {})
@@ -157,7 +157,7 @@ async def handle_media_message(
         encoded_audio = media_payload.get("payload", "")
         if encoded_audio:
             manager.push_audio(call_sid, base64.b64decode(encoded_audio))
-        return call_sid
+        return cast(str, call_sid)
 
     if event == "stop":
         stop_payload = payload.get("stop", {})
