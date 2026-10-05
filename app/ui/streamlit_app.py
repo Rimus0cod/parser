@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import streamlit as st
@@ -36,7 +36,7 @@ settings = get_settings()
 def load_auth_config() -> dict[str, Any]:
     with open(settings.streamlit_users_yaml_path, "r", encoding="utf-8") as file:
         config = yaml.load(file, Loader=SafeLoader)
-    return config
+    return cast(dict[str, Any], config)
 
 
 def render_login() -> tuple[bool, str | None]:
