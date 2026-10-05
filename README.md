@@ -93,7 +93,6 @@ Dockerfile
 docker-compose.yml
 .env.example
 Makefile
-requirements.txt
 pyproject.toml
 utils.py
 ```
@@ -376,10 +375,18 @@ Queues a background scrape task in the API process.
 
 ## Local Development
 
-Install dependencies:
+`pyproject.toml` is the single source of truth for Python dependencies.
+
+Install the main runtime and development dependencies:
 
 ```bash
 poetry install --with dev
+```
+
+Legacy top-level scripts are kept during the migration and use an optional dependency group:
+
+```bash
+poetry install --with dev,legacy
 ```
 
 Run API:
