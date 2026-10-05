@@ -87,7 +87,7 @@ async def update_lead_status(ad_id: str, status: str) -> bool:
                     "UPDATE listings SET status = %s WHERE ad_id = %s",
                     (status, ad_id),
                 )
-                return cur.rowcount > 0
+                return int(cur.rowcount) > 0
 
 
 async def list_agencies(limit: int = 100) -> list[dict[str, Any]]:
