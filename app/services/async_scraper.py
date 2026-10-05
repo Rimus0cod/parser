@@ -15,7 +15,12 @@ from app.core.config import Settings, SiteConfig
 from app.core.logging import get_logger
 
 try:
-    from utils import extract_names, extract_phone_numbers, looks_like_person_name, normalize_phone_number
+    from utils import (
+        extract_names,
+        extract_phone_numbers,
+        looks_like_person_name,
+        normalize_phone_number,
+    )
 except ImportError:  # pragma: no cover - fallback path for isolated runtimes
     extract_names = None
     extract_phone_numbers = None
@@ -104,7 +109,9 @@ class BaseScraper:
     def __init__(self, site_config: SiteConfig, settings: Settings) -> None:
         self.site_config = site_config
         self.settings = settings
-        self._sem = asyncio.Semaphore(max(1, site_config.concurrency or settings.scrape_concurrency))
+        self._sem = asyncio.Semaphore(
+            max(1, site_config.concurrency or settings.scrape_concurrency)
+        )
         self._proxy_index = 0
 
     def _get_client_kwargs(self) -> dict[str, object]:
@@ -122,10 +129,14 @@ class BaseScraper:
             "Connection": "keep-alive",
         }
         kwargs: dict[str, object] = {
-            "timeout": httpx.Timeout(self.site_config.timeout or self.settings.scrape_timeout_seconds),
+            "timeout": httpx.Timeout(
+                self.site_config.timeout or self.settings.scrape_timeout_seconds
+            ),
             "headers": headers,
             "follow_redirects": self.settings.scrape_follow_redirects,
-            "verify": self.site_config.verify_ssl if self.site_config else self.settings.scrape_verify_ssl,
+            "verify": self.site_config.verify_ssl
+            if self.site_config
+            else self.settings.scrape_verify_ssl,
             "limits": httpx.Limits(
                 max_connections=self.settings.http_max_connections,
                 max_keepalive_connections=self.settings.http_max_keepalive_connections,
@@ -179,7 +190,11 @@ class BaseScraper:
                     seen_ids.add(row.ad_id)
                     listings.append(row)
 
-            if listings and self.settings.scrape_detail_pages and self.site_config.detail_pages_enabled:
+            if (
+                listings
+                and self.settings.scrape_detail_pages
+                and self.site_config.detail_pages_enabled
+            ):
                 await self._enrich_with_detail_pages(client, listings)
 
         logger.info(
@@ -346,7 +361,9 @@ class BaseScraper:
 
         price_el = article.select_one(".product-classic-price")
         if price_el:
-            price_lines = [line.strip() for line in price_el.get_text("\n").splitlines() if line.strip()]
+            price_lines = [
+                line.strip() for line in price_el.get_text("\n").splitlines() if line.strip()
+            ]
             price = price_lines[0] if price_lines else ""
         else:
             price = ""
@@ -405,7 +422,9 @@ class BaseScraper:
 
         title_el = card.select_one("a.avn_seo[href]")
         title = self._clean_text(
-            title_el.get_text(" ", strip=True) if title_el is not None else link_el.get_text(" ", strip=True)
+            title_el.get_text(" ", strip=True)
+            if title_el is not None
+            else link_el.get_text(" ", strip=True)
         )
         if not title:
             title = self._title_from_url(link)
@@ -422,9 +441,16 @@ class BaseScraper:
         price = self._clean_text(price_el.get_text(" ", strip=True) if price_el is not None else "")
 
         location_el = card.select_one(".avn_location")
-        location = self._clean_text(location_el.get_text(" ", strip=True) if location_el is not None else "")
+        location = self._clean_text(
+            location_el.get_text(" ", strip=True) if location_el is not None else ""
+        )
 
-        ad_id_match = re.search(r"adrows_(\d{4,12})", " ".join(card.get("id", []) if isinstance(card.get("id"), list) else [card.get("id", "")]))
+        ad_id_match = re.search(
+            r"adrows_(\d{4,12})",
+            " ".join(
+                card.get("id", []) if isinstance(card.get("id"), list) else [card.get("id", "")]
+            ),
+        )
         ad_id = ad_id_match.group(1) if ad_id_match else self._extract_ad_id(link)
 
         return ScrapedListing(
@@ -540,9 +566,13 @@ class BaseScraper:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for result in results:
             if isinstance(result, Exception):
-                logger.warning("Detail page enrichment failed", error=str(result), site=self.site_config.name)
+                logger.warning(
+                    "Detail page enrichment failed", error=str(result), site=self.site_config.name
+                )
 
-    async def _enrich_one(self, client: httpx.AsyncClient, listing: ScrapedListing) -> ScrapedListing:
+    async def _enrich_one(
+        self, client: httpx.AsyncClient, listing: ScrapedListing
+    ) -> ScrapedListing:
         response = await self._request_with_retries(client, url=listing.link, context="detail page")
         if response is None:
             return listing
@@ -605,10 +635,14 @@ class BaseScraper:
                     listing.phone = phone
                 continue
 
-            if "mdi-email" in icon_classes and (not listing.contact_email or listing.contact_email == "-"):
+            if "mdi-email" in icon_classes and (
+                not listing.contact_email or listing.contact_email == "-"
+            ):
                 email_anchor = block.select_one("a[href]")
                 email_text = self._clean_text(
-                    email_anchor.get_text(" ", strip=True) if email_anchor is not None else block_text
+                    email_anchor.get_text(" ", strip=True)
+                    if email_anchor is not None
+                    else block_text
                 )
                 email_match = EMAIL_RE.search(email_text)
                 if email_match:
@@ -700,7 +734,11 @@ class BaseScraper:
             value = self._clean_text(candidate)
             if not value:
                 continue
-            if value in {"Контакт с подателя", "Контакт с подателя на обявата", "Изпрати съобщение"}:
+            if value in {
+                "Контакт с подателя",
+                "Контакт с подателя на обявата",
+                "Изпрати съобщение",
+            }:
                 continue
             if value.endswith(".alo.bg"):
                 continue
@@ -784,7 +822,10 @@ class BaseScraper:
         return match.group(0) if match else "-"
 
     def _passes_filters(self, listing: ScrapedListing) -> bool:
-        if self.settings.city_filter and self.settings.city_filter.lower() not in listing.location.lower():
+        if (
+            self.settings.city_filter
+            and self.settings.city_filter.lower() not in listing.location.lower()
+        ):
             return False
         return True
 
@@ -875,7 +916,10 @@ class BaseScraper:
 
     def _link_looks_like_listing(self, link: str) -> bool:
         parsed = urlparse(link)
-        if self.site_config.allowed_domains and parsed.netloc not in self.site_config.allowed_domains:
+        if (
+            self.site_config.allowed_domains
+            and parsed.netloc not in self.site_config.allowed_domains
+        ):
             return False
         if self.site_config.listing_path_keywords:
             return any(keyword in parsed.path for keyword in self.site_config.listing_path_keywords)
@@ -1001,7 +1045,9 @@ class BaseScraper:
                 return names[0]
 
         if looks_like_person_name is not None:
-            chunks = [self._clean_text(chunk) for chunk in text_content.split("  ") if chunk.strip()]
+            chunks = [
+                self._clean_text(chunk) for chunk in text_content.split("  ") if chunk.strip()
+            ]
             for chunk in chunks:
                 if looks_like_person_name(chunk):
                     return chunk
@@ -1021,7 +1067,11 @@ class AsyncImotiScraper(BaseScraper):
 class MultiSiteScraper:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.scrapers = [BaseScraper(site_config, settings) for site_config in settings.sites if site_config.enabled]
+        self.scrapers = [
+            BaseScraper(site_config, settings)
+            for site_config in settings.sites
+            if site_config.enabled
+        ]
 
     async def scrape_all_sites(self) -> list[ScrapedListing]:
         tasks = [scraper.scrape() for scraper in self.scrapers]
