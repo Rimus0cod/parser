@@ -10,7 +10,7 @@ from app.core.logging import configure_logging, get_logger
 from app.db.mysql import init_schema
 from app.models.schemas import Agency, Lead, LeadStatusUpdate, TriggerScrapeResponse
 from app.services.async_scraper import MultiSiteScraper
-from app.services.repository import list_agencies, list_leads, update_lead_status, upsert_leads
+from app.services.repository import get_listing_by_ad_id, list_agencies, list_leads, update_lead_status, upsert_leads
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
@@ -95,8 +95,7 @@ async def patch_lead_status(ad_id: str, payload: LeadStatusUpdate) -> Lead:
     if not updated:
         raise HTTPException(status_code=404, detail="Lead was not found.")
 
-    rows = await list_leads(limit=1000)
-    row = next((item for item in rows if item.get("ad_id") == ad_id), None)
+    row = await get_listing_by_ad_id(ad_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Lead was not found.")
     return Lead.model_validate(row)
