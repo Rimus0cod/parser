@@ -14,28 +14,21 @@ from app.core.config import Settings, SiteConfig
 from app.core.logging import get_logger
 from app.scraper.models import ScrapedListing
 from app.scraper.sources.alo import AloSourceParser
+from app.scraper.sources.imoti import ImotiSourceParser
 
-extract_names: Callable[[str], list[str]] | None
 extract_phone_numbers: Callable[[str], list[str]] | None
-looks_like_person_name: Callable[[str], bool] | None
 normalize_phone_number: Callable[[str], str] | None
 
 try:
     from utils import (
-        extract_names as _extract_names,
         extract_phone_numbers as _extract_phone_numbers,
-        looks_like_person_name as _looks_like_person_name,
         normalize_phone_number as _normalize_phone_number,
     )
 
-    extract_names = _extract_names
     extract_phone_numbers = _extract_phone_numbers
-    looks_like_person_name = _looks_like_person_name
     normalize_phone_number = _normalize_phone_number
 except ImportError:  # pragma: no cover - fallback path for isolated runtimes
-    extract_names = None
     extract_phone_numbers = None
-    looks_like_person_name = None
     normalize_phone_number = None
 
 logger = get_logger("async_scraper")
@@ -107,6 +100,11 @@ class BaseScraper:
         )
         self._proxy_index = 0
         self._alo_parser = AloSourceParser(self, site_config.name)
+        self._imoti_parser = ImotiSourceParser(
+            self,
+            site_config.name,
+            site_config.selectors,
+        )
 
     def _get_client_kwargs(self) -> dict[str, Any]:
         headers = {
@@ -290,7 +288,7 @@ class BaseScraper:
 
     def _parse_listing_page(self, html: str, base_url: str) -> list[ScrapedListing]:
         parsers = {
-            "imoti.bg": self._parse_imoti_listing_page,
+            "imoti.bg": self._imoti_parser.parse_listing_page,
             "alo.bg": self._alo_parser.parse_listing_page,
             "dom.ria.com": self._parse_generic_anchor_page,
             "olx.ua": self._parse_generic_anchor_page,
@@ -298,107 +296,6 @@ class BaseScraper:
         }
         parser = parsers.get(self.site_config.name, self._parse_generic_cards)
         return parser(html=html, base_url=base_url)
-
-    def _parse_imoti_listing_page(self, html: str, base_url: str) -> list[ScrapedListing]:
-        soup = BeautifulSoup(html, "html.parser")
-        exact_cards = soup.select("article.product-classic")
-        if exact_cards:
-            exact_results: list[ScrapedListing] = []
-            seen_ids: set[str] = set()
-            for article in exact_cards:
-                listing = self._parse_imoti_card_exact(article, base_url)
-                if listing is None or listing.ad_id in seen_ids:
-                    continue
-                seen_ids.add(listing.ad_id)
-                if self._passes_filters(listing):
-                    exact_results.append(listing)
-            return exact_results
-
-        soup = BeautifulSoup(html, "lxml")
-        links = soup.select(self.site_config.selectors.get("link", "a[href*='/наеми/']"))
-        results: list[ScrapedListing] = []
-        seen_links: set[str] = set()
-
-        for link_el in links:
-            link = self._normalize_link(base_url, self._attr_str(link_el, "href"))
-            if not link or link in seen_links:
-                continue
-            seen_links.add(link)
-
-            title = self._clean_text(link_el.get_text(" ", strip=True))
-            if not self._is_listing_candidate(title):
-                continue
-
-            card = self._pick_card_container(link_el)
-            card_text = card.get_text("\n", strip=True) if card else title
-            listing = ScrapedListing(
-                ad_id=self._extract_ad_id(link),
-                title=title,
-                price=self._extract_price(card_text),
-                location=self._extract_location(card_text),
-                size=self._extract_size(card_text),
-                link=link,
-                image_url=self._extract_image(card, base_url),
-                seller_name=self._extract_seller_name(card),
-                ad_type=self._detect_ad_type(self._extract_seller_name(card)),
-            )
-            if self._passes_filters(listing):
-                results.append(listing)
-
-        return results
-
-    def _parse_imoti_card_exact(self, article: Tag, base_url: str) -> ScrapedListing | None:
-        title_anchor = article.select_one("h4.product-classic-title a")
-        if title_anchor is None:
-            return None
-
-        link = self._normalize_link(base_url, self._attr_str(title_anchor, "href"))
-        if not link:
-            return None
-
-        ad_id = self._extract_ad_id(link)
-        if not ad_id:
-            return None
-
-        title = self._clean_text(title_anchor.get_text(strip=True))
-        if not self._is_listing_candidate(title):
-            return None
-
-        price_el = article.select_one(".product-classic-price")
-        if price_el:
-            price_lines = [
-                line.strip() for line in price_el.get_text("\n").splitlines() if line.strip()
-            ]
-            price = price_lines[0] if price_lines else ""
-        else:
-            price = ""
-
-        location_el = article.select_one(".btext")
-        location = self._clean_text(location_el.get_text(strip=True) if location_el else "")
-
-        size = ""
-        for li in article.select(".product-classic-list li"):
-            text = self._clean_text(li.get_text(strip=True))
-            if "кв.м." in text or "м²" in text:
-                size = text.replace("м2", "м²")
-                break
-
-        seller_name = self._extract_seller_name_from_imoti_card(article)
-        phone = self._extract_phone_from_imoti_card(article)
-
-        return ScrapedListing(
-            ad_id=ad_id,
-            title=title,
-            price=price,
-            location=location,
-            size=size,
-            link=link,
-            image_url=self._extract_image(article, base_url),
-            source_site=self.site_config.name,
-            phone=phone,
-            seller_name=seller_name,
-            ad_type=self._detect_ad_type(seller_name),
-        )
 
     def _parse_generic_cards(self, html: str, base_url: str) -> list[ScrapedListing]:
         soup = BeautifulSoup(html, "lxml")
@@ -517,7 +414,7 @@ class BaseScraper:
 
         soup = BeautifulSoup(response.text, "lxml")
         if self.site_config.name == "imoti.bg":
-            self._enrich_imoti_detail(soup, listing)
+            self._imoti_parser.enrich_detail(soup, listing)
         elif self.site_config.name == "alo.bg":
             self._alo_parser.enrich_detail(soup, listing)
         else:
@@ -549,101 +446,6 @@ class BaseScraper:
             listing.size = self._extract_size(text)
         if not listing.contact_name or listing.contact_name == "-":
             listing.contact_name = listing.seller_name or self._guess_contact_name(text)
-
-    def _enrich_imoti_detail(self, soup: BeautifulSoup, listing: ScrapedListing) -> None:
-        if not self._looks_like_real_seller_name(listing.seller_name):
-            listing.seller_name = ""
-
-        for block in soup.select("div.block-person-link"):
-            icon = block.select_one("span.icon")
-            icon_classes = self._attr_str(icon, "class")
-            block_text = self._clean_text(block.get_text(" ", strip=True))
-
-            if "mdi-account" in icon_classes and block_text:
-                listing.seller_name = block_text
-                if not listing.contact_name or listing.contact_name == "-":
-                    listing.contact_name = block_text
-                continue
-
-            if "mdi-phone" in icon_classes and not listing.phone:
-                tel = block.select_one("a[href^='tel:']")
-                phone_source = self._attr_str(tel, "href") if tel is not None else block_text
-                phone = self._extract_phone_from_text(phone_source)
-                if phone:
-                    listing.phone = phone
-                continue
-
-            if "mdi-email" in icon_classes and (
-                not listing.contact_email or listing.contact_email == "-"
-            ):
-                email_anchor = block.select_one("a[href]")
-                email_text = self._clean_text(
-                    email_anchor.get_text(" ", strip=True)
-                    if email_anchor is not None
-                    else block_text
-                )
-                email_match = EMAIL_RE.search(email_text)
-                if email_match:
-                    listing.contact_email = email_match.group(0)
-
-        if not listing.seller_name:
-            for sel in (
-                "h1 a",
-                ".product-title a",
-                ".property-title",
-                "[class*='owner']",
-                "[class*='seller']",
-                "[class*='agency']",
-            ):
-                el = soup.select_one(sel)
-                if el is not None:
-                    candidate = self._clean_text(el.get_text(" ", strip=True))
-                    if self._looks_like_real_seller_name(candidate):
-                        listing.seller_name = candidate
-                        break
-
-        if not listing.contact_name or listing.contact_name == "-":
-            listing.contact_name = self._extract_contact_name_from_detail_soup(soup)
-        if listing.seller_name:
-            listing.ad_type = self._detect_ad_type(listing.seller_name)
-
-    def _looks_like_real_seller_name(self, value: str) -> bool:
-        normalized = self._clean_text(value).lower()
-        if not normalized:
-            return False
-        if "*" in normalized:
-            return False
-        if any(word in normalized for word in APARTMENT_KEYWORDS):
-            return False
-        if any(token in normalized for token in ("кв.м", "месец", "eur", "лв", "€", "$")):
-            return False
-        return True
-
-    def _extract_contact_name_from_detail_soup(self, soup: BeautifulSoup) -> str:
-        for block in soup.select("div.block-person-link"):
-            text = self._clean_text(block.get_text(" ", strip=True))
-            if not text:
-                continue
-            if looks_like_person_name is not None and looks_like_person_name(text):
-                return text
-
-        for sel in (
-            ".contact-name",
-            ".agent-name",
-            ".block-agent-contact .name",
-            ".contact-person",
-            "[class*='contact-name']",
-        ):
-            el = soup.select_one(sel)
-            if el is None:
-                continue
-            candidate = self._clean_text(el.get_text(" ", strip=True))
-            if not candidate:
-                continue
-            if looks_like_person_name is None or looks_like_person_name(candidate):
-                return candidate
-
-        return "-"
 
     def _extract_contact_email_from_detail_soup(self, soup: BeautifulSoup) -> str:
         for root in soup.select("div.block-person-link, div.block-info, div.block-agent"):
@@ -845,59 +647,6 @@ class BaseScraper:
             if len(sentence.split()) in {2, 3} and not PRICE_RE.search(sentence):
                 return sentence[:120]
         return "-"
-
-    def _extract_phone_from_imoti_card(self, article: Tag) -> str:
-        tel_link = article.select_one('a[href^="tel:"]')
-        if tel_link:
-            phone = self._extract_phone_from_text(self._attr_str(tel_link, "href"))
-            if phone:
-                return phone
-
-        for selector in (
-            "[class*='phone']",
-            "[class*='tel']",
-            ".contact-phone",
-            ".phone-number",
-            "span.phone",
-        ):
-            el = article.select_one(selector)
-            if el is not None:
-                phone = self._extract_phone_from_text(el.get_text(" ", strip=True))
-                if phone:
-                    return phone
-
-        full_text = article.get_text(" ", strip=True)
-        return self._extract_phone_from_text(full_text)
-
-    def _extract_seller_name_from_imoti_card(self, article: Tag) -> str:
-        for selector in (
-            ".product-classic-agency",
-            ".agency-name",
-            ".seller-name",
-            "[class*='agency']",
-            "[class*='seller']",
-            ".block-info h3",
-        ):
-            el = article.select_one(selector)
-            if el is not None:
-                name = self._clean_text(el.get_text(strip=True))
-                if self._looks_like_real_seller_name(name):
-                    return name
-
-        text_content = article.get_text(" ", strip=True)
-        if extract_names is not None:
-            names = extract_names(text_content)
-            if names:
-                return names[0]
-
-        if looks_like_person_name is not None:
-            chunks = [
-                self._clean_text(chunk) for chunk in text_content.split("  ") if chunk.strip()
-            ]
-            for chunk in chunks:
-                if looks_like_person_name(chunk):
-                    return chunk
-        return ""
 
     def _title_from_url(self, link: str) -> str:
         path = urlparse(link).path.rstrip("/").split("/")[-1]
