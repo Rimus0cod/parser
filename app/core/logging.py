@@ -7,24 +7,28 @@ from typing import Any, cast
 
 import structlog
 
+sentry_sdk: Any
+LoggingIntegration: Any
+AioHttpIntegration: Any
+HttpxIntegration: Any
+
 try:
     import sentry_sdk as _sentry_sdk
     from sentry_sdk.integrations.aiohttp import AioHttpIntegration as _AioHttpIntegration
     from sentry_sdk.integrations.httpx import HttpxIntegration as _HttpxIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration as _LoggingIntegration
 
+    sentry_sdk = _sentry_sdk
+    LoggingIntegration = _LoggingIntegration
+    AioHttpIntegration = _AioHttpIntegration
+    HttpxIntegration = _HttpxIntegration
     SENTRY_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency path
-    _sentry_sdk = None
-    _LoggingIntegration = None
-    _AioHttpIntegration = None
-    _HttpxIntegration = None
+    sentry_sdk = None
+    LoggingIntegration = None
+    AioHttpIntegration = None
+    HttpxIntegration = None
     SENTRY_AVAILABLE = False
-
-sentry_sdk: Any = _sentry_sdk
-LoggingIntegration: Any = _LoggingIntegration
-AioHttpIntegration: Any = _AioHttpIntegration
-HttpxIntegration: Any = _HttpxIntegration
 
 
 def configure_logging(
