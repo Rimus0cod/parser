@@ -34,29 +34,8 @@ jobs:
       - name: Ruff
         run: poetry run ruff check app/ integrations/ utils.py
 
-      - name: Ruff format preview
-        run: |
-          poetry run ruff format app/ integrations/ utils.py
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-
-          for name in (
-              "app/core/config.py",
-              "app/core/logging.py",
-              "app/db/mysql.py",
-              "app/scraper_worker.py",
-              "app/services/async_scraper.py",
-              "app/ui/streamlit_app.py",
-              "app/voice/media.py",
-              "app/voice/prompts.py",
-              "app/voice/router.py",
-              "app/voice/service.py",
-          ):
-              payload = base64.b64encode(Path(name).read_bytes()).decode("ascii")
-              print(f"FORMATTED_FILE {name} {payload}")
-          PY
-          exit 1
+      - name: Ruff format check
+        run: poetry run ruff format --check app/ integrations/ utils.py
 
       - name: MyPy
         run: poetry run mypy app/ integrations/
