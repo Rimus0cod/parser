@@ -13,7 +13,7 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
 from app.db.mysql import mysql_pool
-from app.services.async_scraper import ScrapedListing
+from app.scraper.models import ScrapedListing
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.core.config import WebhookConfig
-from app.services.async_scraper import ScrapedListing
+from app.scraper.models import ScrapedListing
 
 logger = logging.getLogger(__name__)
 

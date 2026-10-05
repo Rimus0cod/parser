@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import random
 import re
-from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable, Sequence
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -13,6 +12,8 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.config import Settings, SiteConfig
 from app.core.logging import get_logger
+from app.scraper.models import ScrapedListing
+from app.scraper.sources.alo import AloSourceParser
 
 extract_names: Callable[[str], list[str]] | None
 extract_phone_numbers: Callable[[str], list[str]] | None
@@ -97,24 +98,6 @@ PHONE_RE = re.compile(
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", flags=re.I)
 
 
-@dataclass(slots=True)
-class ScrapedListing:
-    ad_id: str
-    title: str
-    price: str
-    location: str
-    size: str
-    link: str
-    image_url: str = ""
-    source_site: str = ""
-    phone: str = ""
-    seller_name: str = ""
-    ad_type: str = ""
-    contact_name: str = "-"
-    contact_email: str = "-"
-    date_seen: str = ""
-
-
 class BaseScraper:
     def __init__(self, site_config: SiteConfig, settings: Settings) -> None:
         self.site_config = site_config
@@ -123,6 +106,7 @@ class BaseScraper:
             max(1, site_config.concurrency or settings.scrape_concurrency)
         )
         self._proxy_index = 0
+        self._alo_parser = AloSourceParser(self, site_config.name)
 
     def _get_client_kwargs(self) -> dict[str, Any]:
         headers = {
@@ -307,7 +291,7 @@ class BaseScraper:
     def _parse_listing_page(self, html: str, base_url: str) -> list[ScrapedListing]:
         parsers = {
             "imoti.bg": self._parse_imoti_listing_page,
-            "alo.bg": self._parse_alo_listing_page,
+            "alo.bg": self._alo_parser.parse_listing_page,
             "dom.ria.com": self._parse_generic_anchor_page,
             "olx.ua": self._parse_generic_anchor_page,
             "lun.ua": self._parse_generic_anchor_page,
@@ -414,73 +398,6 @@ class BaseScraper:
             phone=phone,
             seller_name=seller_name,
             ad_type=self._detect_ad_type(seller_name),
-        )
-
-    def _parse_alo_listing_page(self, html: str, base_url: str) -> list[ScrapedListing]:
-        soup = BeautifulSoup(html, "lxml")
-        cards = soup.select("div.ad_block_normal")
-        results: list[ScrapedListing] = []
-        seen_ids: set[str] = set()
-
-        for card in cards:
-            listing = self._parse_alo_card(card, base_url)
-            if listing is None or listing.ad_id in seen_ids:
-                continue
-            seen_ids.add(listing.ad_id)
-            if self._passes_filters(listing):
-                results.append(listing)
-
-        return results
-
-    def _parse_alo_card(self, card: Tag, base_url: str) -> ScrapedListing | None:
-        link_el = card.select_one("a.avn_seo[href], a.avn_image[href], a[href]")
-        if link_el is None:
-            return None
-
-        link = self._normalize_link(base_url, self._attr_str(link_el, "href"))
-        if not link:
-            return None
-
-        title_el = card.select_one("a.avn_seo[href]")
-        title = self._clean_text(
-            title_el.get_text(" ", strip=True)
-            if title_el is not None
-            else link_el.get_text(" ", strip=True)
-        )
-        if not title:
-            title = self._title_from_url(link)
-
-        image = card.select_one("a.avn_image img[alt], img[alt]")
-        image_alt = self._clean_text(self._attr_str(image, "alt"))
-        card_text = self._clean_text(card.get_text(" ", strip=True))
-        combined_text = self._clean_text(f"{title} {image_alt} {card_text}")
-
-        if not self._is_alo_listing_candidate(title=title, combined_text=combined_text):
-            return None
-
-        price_el = card.select_one(".avn_price")
-        price = self._clean_text(price_el.get_text(" ", strip=True) if price_el is not None else "")
-
-        location_el = card.select_one(".avn_location")
-        location = self._clean_text(
-            location_el.get_text(" ", strip=True) if location_el is not None else ""
-        )
-
-        ad_id_match = re.search(
-            r"adrows_(\d{4,12})",
-            self._attr_str(card, "id"),
-        )
-        ad_id = ad_id_match.group(1) if ad_id_match else self._extract_ad_id(link)
-
-        return ScrapedListing(
-            ad_id=ad_id,
-            title=title,
-            price=price,
-            location=location,
-            size=self._extract_size(combined_text),
-            link=link,
-            image_url=self._extract_image(card, base_url),
-            source_site=self.site_config.name,
         )
 
     def _parse_generic_cards(self, html: str, base_url: str) -> list[ScrapedListing]:
@@ -602,7 +519,7 @@ class BaseScraper:
         if self.site_config.name == "imoti.bg":
             self._enrich_imoti_detail(soup, listing)
         elif self.site_config.name == "alo.bg":
-            self._enrich_alo_detail(soup, listing)
+            self._alo_parser.enrich_detail(soup, listing)
         else:
             self._enrich_generic_detail(soup, listing)
 
@@ -689,100 +606,6 @@ class BaseScraper:
             listing.contact_name = self._extract_contact_name_from_detail_soup(soup)
         if listing.seller_name:
             listing.ad_type = self._detect_ad_type(listing.seller_name)
-
-    def _enrich_alo_detail(self, soup: BeautifulSoup, listing: ScrapedListing) -> None:
-        title_el = soup.select_one("h1.large-headline, h1")
-        if title_el is not None:
-            title = self._clean_text(title_el.get_text(" ", strip=True))
-            if title:
-                listing.title = title
-
-        price_text = self._extract_alo_detail_price(soup)
-        if price_text:
-            listing.price = price_text
-
-        params = self._extract_alo_params(soup)
-        if params.get("Местоположение"):
-            listing.location = params["Местоположение"]
-        if params.get("Квадратура"):
-            listing.size = params["Квадратура"].replace("\xa0", " ")
-
-        seller_name = self._extract_alo_seller_name(soup)
-        if seller_name:
-            listing.seller_name = seller_name
-
-        contact_name = self._extract_alo_contact_name(soup)
-        if contact_name:
-            listing.contact_name = contact_name
-
-        visible_phone = self._extract_alo_phone(soup)
-        if visible_phone:
-            listing.phone = visible_phone
-
-        if soup.select_one(".contacts_wrapper_flex.has_agents"):
-            listing.ad_type = "agency"
-        elif listing.seller_name:
-            listing.ad_type = self._detect_ad_type(listing.seller_name)
-        else:
-            listing.ad_type = "private"
-
-    def _extract_alo_detail_price(self, soup: BeautifulSoup) -> str:
-        for cell in soup.select(".ads-params-price"):
-            text = self._clean_text(cell.get_text(" ", strip=True))
-            if "€" in text or "лв" in text.lower():
-                return text.split("Цената е около", 1)[0].strip()
-        return ""
-
-    def _extract_alo_params(self, soup: BeautifulSoup) -> dict[str, str]:
-        params: dict[str, str] = {}
-        for row in soup.select(".ads-params-row"):
-            title_el = row.select_one(".ads-param-title")
-            value_candidates = row.select(".ads-params-cell")
-            if title_el is None or len(value_candidates) < 2:
-                continue
-            title = self._clean_text(title_el.get_text(" ", strip=True))
-            value = self._clean_text(value_candidates[-1].get_text(" ", strip=True))
-            if title and value:
-                params[title] = value
-        return params
-
-    def _extract_alo_seller_name(self, soup: BeautifulSoup) -> str:
-        header = soup.select_one(".contacts.header")
-        if header is None:
-            return ""
-
-        for candidate in header.stripped_strings:
-            value = self._clean_text(candidate)
-            if not value:
-                continue
-            if value in {
-                "Контакт с подателя",
-                "Контакт с подателя на обявата",
-                "Изпрати съобщение",
-            }:
-                continue
-            if value.endswith(".alo.bg"):
-                continue
-            if "Вход" in value and "Регистрация" in value:
-                continue
-            if "*" in value:
-                continue
-            return value
-        return ""
-
-    def _extract_alo_contact_name(self, soup: BeautifulSoup) -> str:
-        el = soup.select_one(".agent_div .contact_value, .contact_value")
-        return self._clean_text(el.get_text(" ", strip=True) if el is not None else "")
-
-    def _extract_alo_phone(self, soup: BeautifulSoup) -> str:
-        for span in soup.select(".contact_phone .ocd_span, .ocd_span"):
-            masked = self._clean_text(span.get_text(" ", strip=True))
-            if "X" in masked.upper():
-                continue
-            phone = self._extract_phone_from_text(masked)
-            if phone:
-                return phone
-        return ""
 
     def _looks_like_real_seller_name(self, value: str) -> bool:
         normalized = self._clean_text(value).lower()

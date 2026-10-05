@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.db.mysql import mysql_pool
-from app.services.async_scraper import ScrapedListing, to_listing_rows
+from app.scraper.models import ScrapedListing
+from app.services.async_scraper import to_listing_rows
 
 logger = logging.getLogger(__name__)
 _MISSING = object()
