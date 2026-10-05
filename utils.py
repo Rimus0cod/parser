@@ -5,7 +5,7 @@ Contains enhanced regular expressions and validation logic.
 
 import re
 import unicodedata
-from typing import List, Optional, Tuple
+from typing import List
 
 
 def normalize_phone_number(phone: str) -> str:
