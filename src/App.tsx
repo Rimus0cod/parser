@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Building, PhoneCall, Users, Cpu, Layers } from 'lucide-react';
+import { Home, Building, PhoneCall, Users, Cpu } from 'lucide-react';
 import { Header } from './components/Header';
 import { MetricCards } from './components/MetricCards';
 import { LeadsTab } from './components/LeadsTab';
@@ -39,7 +39,7 @@ export function App() {
       if (statsRes.status === 'fulfilled' && statsRes.value) setScraperStats(statsRes.value);
       if (healthRes.status === 'fulfilled' && healthRes.value) setHealth(healthRes.value);
     } catch {
-      // Fallback already preloaded
+      // Individual requests are handled by Promise.allSettled; keep last known live data.
     }
   };
 
@@ -75,13 +75,15 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listing_ad_id: listingAdId, initiated_by: 'Pavlo (admin)' }),
       });
-      if (res.ok) {
-        const newCall = await res.json();
-        setVoiceCalls((prev) => [newCall, ...prev]);
-        setTimeout(async () => {
-          await refreshData();
-        }, 4500);
+      if (!res.ok) {
+        await refreshData();
+        throw new Error(`Failed to start voice call: ${res.status}`);
       }
+      const newCall = await res.json();
+      setVoiceCalls((prev) => [newCall, ...prev]);
+      setTimeout(async () => {
+        await refreshData();
+      }, 4500);
     } finally {
       setIsCalling(false);
     }
