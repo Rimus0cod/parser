@@ -13,8 +13,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN /opt/venv/bin/pip install -r requirements.txt
+COPY pyproject.toml README.md ./
+COPY app ./app
+RUN /opt/venv/bin/pip install .
 
 
 FROM python:3.11-slim AS runtime
