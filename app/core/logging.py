@@ -84,7 +84,9 @@ def configure_logging(
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
         except OSError as exc:
-            root_logger.warning("File logging is disabled because log directory is not writable: %s", exc)
+            root_logger.warning(
+                "File logging is disabled because log directory is not writable: %s", exc
+            )
 
     if sentry_dsn and SENTRY_AVAILABLE:
         sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
