@@ -10,12 +10,13 @@ from typing import Any, cast
 
 from app.core.logging import get_logger
 
+speech: Any
 try:
     from google.cloud import speech as _speech
-except ImportError:  # pragma: no cover - optional dependency path
-    _speech = None
 
-speech: Any = _speech
+    speech = _speech
+except ImportError:  # pragma: no cover - optional dependency path
+    speech = None
 
 logger = get_logger("voice.media")
 
