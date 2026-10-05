@@ -14,6 +14,11 @@ from bs4 import BeautifulSoup, Tag
 from app.core.config import Settings, SiteConfig
 from app.core.logging import get_logger
 
+extract_names: Callable[[str], list[str]] | None
+extract_phone_numbers: Callable[[str], list[str]] | None
+looks_like_person_name: Callable[[str], bool] | None
+normalize_phone_number: Callable[[str], str] | None
+
 try:
     from utils import (
         extract_names as _extract_names,
@@ -21,16 +26,16 @@ try:
         looks_like_person_name as _looks_like_person_name,
         normalize_phone_number as _normalize_phone_number,
     )
-except ImportError:  # pragma: no cover - fallback path for isolated runtimes
-    _extract_names = None
-    _extract_phone_numbers = None
-    _looks_like_person_name = None
-    _normalize_phone_number = None
 
-extract_names: Callable[[str], list[str]] | None = _extract_names
-extract_phone_numbers: Callable[[str], list[str]] | None = _extract_phone_numbers
-looks_like_person_name: Callable[[str], bool] | None = _looks_like_person_name
-normalize_phone_number: Callable[[str], str] | None = _normalize_phone_number
+    extract_names = _extract_names
+    extract_phone_numbers = _extract_phone_numbers
+    looks_like_person_name = _looks_like_person_name
+    normalize_phone_number = _normalize_phone_number
+except ImportError:  # pragma: no cover - fallback path for isolated runtimes
+    extract_names = None
+    extract_phone_numbers = None
+    looks_like_person_name = None
+    normalize_phone_number = None
 
 logger = get_logger("async_scraper")
 
