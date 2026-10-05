@@ -143,7 +143,9 @@ async def handle_media_message(
 
     if event == "media":
         media_payload = payload.get("media", {})
-        call_sid = media_payload.get("callSid") or manager.call_sid_for_stream(payload.get("streamSid"))
+        call_sid = media_payload.get("callSid") or manager.call_sid_for_stream(
+            payload.get("streamSid")
+        )
         track = media_payload.get("track")
         if track and track != "inbound":
             return None
@@ -156,7 +158,9 @@ async def handle_media_message(
 
     if event == "stop":
         stop_payload = payload.get("stop", {})
-        call_sid = stop_payload.get("callSid") or manager.call_sid_for_stream(payload.get("streamSid"))
+        call_sid = stop_payload.get("callSid") or manager.call_sid_for_stream(
+            payload.get("streamSid")
+        )
         if call_sid:
             manager.stop_stream(call_sid)
         return call_sid
