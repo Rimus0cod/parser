@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
-async def test_integrations():
+async def test_integrations() -> None:
     """Test all configured integrations."""
     settings = get_settings()
 
