@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,10 +29,7 @@ def _default_user_agents() -> list[str]:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/136.0.0.0 Safari/537.36"
         ),
-        (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) "
-            "Gecko/20100101 Firefox/138.0"
-        ),
+        ("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) " "Gecko/20100101 Firefox/138.0"),
     ]
 
 

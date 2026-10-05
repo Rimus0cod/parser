@@ -62,9 +62,21 @@ def parse_tenant_contacts_csv(content: bytes, filename: str = "upload.csv") -> l
     reader = csv.DictReader(StringIO(decoded), delimiter=delimiter)
     rows: list[dict[str, Any]] = []
     for row in reader:
-        normalized_row = {str(key or "").strip().lower(): (value or "").strip() for key, value in row.items()}
-        full_name = normalized_row.get("full_name") or normalized_row.get("name") or normalized_row.get("contact_name") or ""
-        phone_raw = normalized_row.get("phone_raw") or normalized_row.get("phone") or normalized_row.get("mobile") or ""
+        normalized_row = {
+            str(key or "").strip().lower(): (value or "").strip() for key, value in row.items()
+        }
+        full_name = (
+            normalized_row.get("full_name")
+            or normalized_row.get("name")
+            or normalized_row.get("contact_name")
+            or ""
+        )
+        phone_raw = (
+            normalized_row.get("phone_raw")
+            or normalized_row.get("phone")
+            or normalized_row.get("mobile")
+            or ""
+        )
         phone_normalized = normalize_bulgarian_phone(phone_raw)
         if not phone_normalized:
             continue
@@ -121,7 +133,9 @@ class VoiceService:
         validator = RequestValidator(self._settings.twilio_auth_token)
         return validator.validate(url, params, signature)
 
-    async def start_listing_call(self, listing_ad_id: str, initiated_by: str = "api") -> dict[str, Any]:
+    async def start_listing_call(
+        self, listing_ad_id: str, initiated_by: str = "api"
+    ) -> dict[str, Any]:
         client = self._ensure_twilio_client()
         listing = await repository.get_listing_by_ad_id(listing_ad_id)
         if listing is None:
@@ -180,7 +194,9 @@ class VoiceService:
 
         voice_call = await repository.get_voice_call(voice_call_id)
         if voice_call is None:
-            raise RuntimeError("Voice call was created but could not be reloaded from the database.")
+            raise RuntimeError(
+                "Voice call was created but could not be reloaded from the database."
+            )
         return voice_call
 
     async def bootstrap_session(self, voice_call_id: int, call_sid: str) -> dict[str, Any]:
