@@ -34,16 +34,8 @@ jobs:
       - name: Ruff
         run: poetry run ruff check app/ integrations/ utils.py
 
-      - name: Ruff format preview
-        run: |
-          poetry run ruff format app/services/async_scraper.py app/voice/media.py
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-          for name in ("app/services/async_scraper.py", "app/voice/media.py"):
-              print(f"FORMATTED_FILE {name} {base64.b64encode(Path(name).read_bytes()).decode('ascii')}")
-          PY
-          exit 1
+      - name: Ruff format check
+        run: poetry run ruff format --check app/ integrations/ utils.py
 
   typing:
     runs-on: ubuntu-latest
@@ -64,8 +56,7 @@ jobs:
           poetry config virtualenvs.create false
           poetry install --with dev
 
-      - name: MyPy (known typing debt)
-        continue-on-error: true
+      - name: MyPy
         run: poetry run mypy app/ integrations/
 
   frontend:
