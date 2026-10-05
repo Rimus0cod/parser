@@ -107,7 +107,9 @@ class SpeechRecognitionManager:
                         break
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-            responses = client.streaming_recognize(config=streaming_config, requests=request_generator())
+            responses = client.streaming_recognize(
+                config=streaming_config, requests=request_generator()
+            )
             for response in responses:
                 for result in response.results:
                     if not result.alternatives:
