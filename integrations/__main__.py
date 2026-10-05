@@ -33,7 +33,7 @@ async def test_integrations():
     # Test Webhooks
     if settings.webhooks.enabled and settings.webhooks.urls:
         logger.info("Testing Webhook integration...")
-        webhook = WebhookIntegration(settings.webhooks)
+        _webhook = WebhookIntegration(settings.webhooks)
         logger.info(f"Webhook integration configured with {len(settings.webhooks.urls)} URLs")
 
     logger.info("Integration testing completed.")
