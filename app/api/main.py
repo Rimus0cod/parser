@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from redis import Redis
@@ -120,7 +121,7 @@ async def scraper_stats() -> dict[str, object]:
         "scrape:last_error",
     ]
     try:
-        values = redis.mget(keys)
+        values = cast(list[str | None], redis.mget(keys))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to read scraper stats from Redis", error=str(exc))
         values = [None] * len(keys)
