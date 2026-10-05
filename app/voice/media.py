@@ -6,14 +6,16 @@ import json
 import os
 import queue
 import threading
-from typing import Any
+from typing import Any, cast
 
 from app.core.logging import get_logger
 
 try:
-    from google.cloud import speech
+    from google.cloud import speech as _speech
 except ImportError:  # pragma: no cover - optional dependency path
-    speech = None
+    _speech = None
+
+speech: Any = _speech
 
 logger = get_logger("voice.media")
 
@@ -104,7 +106,7 @@ class SpeechRecognitionManager:
                         break
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-            responses = client.streaming_recognize(streaming_config, request_generator())
+            responses = client.streaming_recognize(config=streaming_config, requests=request_generator())
             for response in responses:
                 for result in response.results:
                     if not result.alternatives:
@@ -163,7 +165,7 @@ async def handle_media_message(
         )
         if call_sid:
             manager.stop_stream(call_sid)
-        return call_sid
+        return cast(str | None, call_sid)
 
     await asyncio.sleep(0)
     return None
