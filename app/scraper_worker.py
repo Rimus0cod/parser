@@ -10,7 +10,8 @@ from redis import Redis
 from app.core.config import Settings, get_settings
 from app.core.logging import capture_exception, configure_logging, get_logger
 from app.db.mysql import init_schema
-from app.services.async_scraper import MultiSiteScraper, ScrapedListing
+from app.scraper.models import ScrapedListing
+from app.services.async_scraper import MultiSiteScraper
 from app.services.repository import upsert_leads
 from integrations.amocrm import get_amocrm_integration
 from integrations.bitrix24 import get_bitrix24_integration
