@@ -71,7 +71,9 @@ async def _load_dashboard_frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataF
 
 
 async def _start_voice_call(listing_ad_id: str, initiated_by: str) -> dict[str, Any]:
-    return await get_voice_service().start_listing_call(listing_ad_id=listing_ad_id, initiated_by=initiated_by)
+    return await get_voice_service().start_listing_call(
+        listing_ad_id=listing_ad_id, initiated_by=initiated_by
+    )
 
 
 async def _import_tenants(rows: list[dict[str, Any]]) -> int:
@@ -106,7 +108,15 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
 
     display_columns = [
         column
-        for column in ("ad_id", "title", "price", "location", "phone", "seller_name", "contact_name")
+        for column in (
+            "ad_id",
+            "title",
+            "price",
+            "location",
+            "phone",
+            "seller_name",
+            "contact_name",
+        )
         if column in leads_df.columns
     ]
     launch_df = leads_df[display_columns].copy()
@@ -117,7 +127,9 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
         hide_index=True,
         disabled=[column for column in launch_df.columns if column != "launch"],
         column_config={
-            "launch": st.column_config.CheckboxColumn("Call", help="Select one lead to start a call."),
+            "launch": st.column_config.CheckboxColumn(
+                "Call", help="Select one lead to start a call."
+            ),
         },
         key="voice_launch_editor",
     )
@@ -135,9 +147,7 @@ def _render_leads_tab(leads_df: pd.DataFrame, username: str | None) -> None:
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Voice call could not be created: {exc}")
             else:
-                st.success(
-                    f"Voice call #{result['id']} created for listing {listing_ad_id}."
-                )
+                st.success(f"Voice call #{result['id']} created for listing {listing_ad_id}.")
 
     st.dataframe(leads_df, use_container_width=True, hide_index=True)
 
@@ -231,9 +241,13 @@ def main() -> None:
     st.title("Lead SaaS Dashboard")
     st.caption(f"Welcome, {username}. JWT-backed auth cookie is active.")
     if not settings.voice_enabled:
-        st.info("Voice integration is disabled. Set `VOICE_ENABLED=true` to enable outbound calling.")
+        st.info(
+            "Voice integration is disabled. Set `VOICE_ENABLED=true` to enable outbound calling."
+        )
 
-    leads_df, agencies_df, voice_calls_df, tenant_contacts_df = asyncio.run(_load_dashboard_frames())
+    leads_df, agencies_df, voice_calls_df, tenant_contacts_df = asyncio.run(
+        _load_dashboard_frames()
+    )
     _render_overview(leads_df, agencies_df, voice_calls_df, tenant_contacts_df)
 
     leads_tab, agencies_tab, voice_tab, tenants_tab = st.tabs(
