@@ -114,10 +114,14 @@ async def init_schema() -> None:
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
                     """
                 )
-                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_date_seen'")
+                await cur.execute(
+                    "SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_date_seen'"
+                )
                 if await cur.fetchone() is None:
                     try:
-                        await cur.execute("CREATE INDEX idx_listings_date_seen ON listings (date_seen)")
+                        await cur.execute(
+                            "CREATE INDEX idx_listings_date_seen ON listings (date_seen)"
+                        )
                     except OperationalError as exc:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
                             raise
@@ -171,10 +175,14 @@ async def init_schema() -> None:
                     """
                 )
 
-                await cur.execute("SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_source_site'")
+                await cur.execute(
+                    "SHOW INDEX FROM listings WHERE Key_name = 'idx_listings_source_site'"
+                )
                 if await cur.fetchone() is None:
                     try:
-                        await cur.execute("CREATE INDEX idx_listings_source_site ON listings (source_site)")
+                        await cur.execute(
+                            "CREATE INDEX idx_listings_source_site ON listings (source_site)"
+                        )
                     except OperationalError as exc:
                         if exc.args and exc.args[0] != MYSQL_DUPLICATE_KEY_ERROR:
                             raise
