@@ -537,7 +537,9 @@ class BaseScraper:
         try:
             link_selector = self.site_config.selectors.get("link", "a[href]")
             link_el = card.select_one(link_selector)
-            link = self._normalize_link(base_url, self._attr_str(link_el, "href") if link_el else None)
+            link = self._normalize_link(
+                base_url, self._attr_str(link_el, "href") if link_el else None
+            )
             if not link:
                 return None
 
@@ -995,7 +997,9 @@ class BaseScraper:
         image = card.select_one("img[src], img[data-src]")
         if image is None:
             return ""
-        return self._normalize_link(base_url, self._attr_str(image, "src") or self._attr_str(image, "data-src"))
+        return self._normalize_link(
+            base_url, self._attr_str(image, "src") or self._attr_str(image, "data-src")
+        )
 
     def _extract_seller_name(self, card: Tag | None) -> str:
         if card is None:
