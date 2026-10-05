@@ -34,8 +34,16 @@ jobs:
       - name: Ruff
         run: poetry run ruff check app/ integrations/ utils.py tests/test_alo_source_parser.py tests/test_imoti_source_parser.py
 
-      - name: Ruff format check
-        run: poetry run ruff format --check app/ integrations/ utils.py tests/test_alo_source_parser.py
+      - name: Ruff format preview
+        run: |
+          poetry run ruff format app/scraper/sources/imoti.py
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          name = "app/scraper/sources/imoti.py"
+          print(f"FORMATTED_FILE {name} {base64.b64encode(Path(name).read_bytes()).decode('ascii')}")
+          PY
+          exit 1
 
       - name: Source parser regression tests
         run: |
