@@ -168,6 +168,7 @@ class VoiceService:
                 started_at=started_at,
                 last_error=None,
             )
+            await repository.update_lead_status(listing_ad_id, "Contacted")
         except Exception as exc:  # noqa: BLE001
             await repository.patch_voice_call(
                 voice_call_id=voice_call_id,

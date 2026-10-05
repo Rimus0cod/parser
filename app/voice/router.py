@@ -83,6 +83,7 @@ async def serve_voice_prompt(filename: str) -> FileResponse:
 
 
 @router.post("/voice/calls", response_model=VoiceCall)
+@router.post("/api/voice/calls", response_model=VoiceCall)
 async def create_voice_call(payload: VoiceCallCreateRequest) -> VoiceCall:
     service = get_voice_service()
     try:
@@ -100,6 +101,7 @@ async def create_voice_call(payload: VoiceCallCreateRequest) -> VoiceCall:
 
 
 @router.get("/voice/calls", response_model=list[VoiceCall])
+@router.get("/api/voice/calls", response_model=list[VoiceCall])
 async def get_voice_calls(limit: int = Query(default=100, ge=1, le=1000)) -> list[VoiceCall]:
     rows = await repository.list_voice_calls(limit=limit)
     return [VoiceCall.model_validate(row) for row in rows]
@@ -114,12 +116,14 @@ async def get_voice_call(voice_call_id: int) -> VoiceCall:
 
 
 @router.get("/tenant-contacts", response_model=list[TenantContact])
+@router.get("/api/tenant-contacts", response_model=list[TenantContact])
 async def get_tenant_contacts(limit: int = Query(default=100, ge=1, le=1000)) -> list[TenantContact]:
     rows = await repository.list_tenant_contacts(limit=limit)
     return [TenantContact.model_validate(row) for row in rows]
 
 
 @router.post("/tenant-contacts/import", response_model=TenantContactImportResponse)
+@router.post("/api/tenant-contacts/import", response_model=TenantContactImportResponse)
 async def import_tenant_contacts(
     request: Request,
     filename: str = Query(default="upload.csv"),

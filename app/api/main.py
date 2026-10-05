@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import BackgroundTasks, FastAPI, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from redis import Redis
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.mysql import init_schema
-from app.models.schemas import Agency, Lead, TriggerScrapeResponse
+from app.models.schemas import Agency, Lead, LeadStatusUpdate, TriggerScrapeResponse
 from app.services.async_scraper import MultiSiteScraper
-from app.services.repository import list_agencies, list_leads, upsert_leads
+from app.services.repository import (
+    get_listing_by_ad_id,
+    list_agencies,
+    list_leads,
+    update_lead_status,
+    upsert_leads,
+)
 from app.voice.router import router as voice_router
 from app.voice.runtime import prepare_voice_runtime
 
@@ -65,6 +71,7 @@ async def startup() -> None:
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health() -> dict[str, str]:
     status = {"status": "ok", "app": settings.app_name}
     try:
@@ -75,18 +82,64 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/leads", response_model=list[Lead])
+@app.get("/api/leads", response_model=list[Lead])
 async def get_leads(limit: int = Query(default=100, ge=1, le=1000)) -> list[Lead]:
     rows = await list_leads(limit=limit)
     return [Lead.model_validate(row) for row in rows]
 
 
 @app.get("/agencies", response_model=list[Agency])
+@app.get("/api/agencies", response_model=list[Agency])
 async def get_agencies(limit: int = Query(default=100, ge=1, le=1000)) -> list[Agency]:
     rows = await list_agencies(limit=limit)
     return [Agency.model_validate(row) for row in rows]
 
 
+@app.patch("/api/leads/{ad_id}/status", response_model=Lead)
+async def patch_lead_status(ad_id: str, payload: LeadStatusUpdate) -> Lead:
+    updated = await update_lead_status(ad_id, payload.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Lead was not found.")
+
+    row = await get_listing_by_ad_id(ad_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Lead was not found.")
+    return Lead.model_validate(row)
+
+
+@app.get("/api/scraper/stats")
+async def scraper_stats() -> dict[str, object]:
+    redis = _redis()
+    keys = [
+        "scrape:worker_status",
+        "scrape:last_status",
+        "scrape:last_started_at",
+        "scrape:last_finished_at",
+        "scrape:last_total_scraped",
+        "scrape:last_written",
+        "scrape:last_error",
+    ]
+    try:
+        values = redis.mget(keys)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to read scraper stats from Redis", error=str(exc))
+        values = [None] * len(keys)
+
+    stats = dict(zip(keys, values, strict=True))
+    return {
+        "worker_status": stats["scrape:worker_status"] or "idle",
+        "last_status": stats["scrape:last_status"] or "idle",
+        "last_started_at": stats["scrape:last_started_at"],
+        "last_finished_at": stats["scrape:last_finished_at"],
+        "last_total_scraped": int(stats["scrape:last_total_scraped"] or 0),
+        "last_written": int(stats["scrape:last_written"] or 0),
+        "last_error": stats["scrape:last_error"],
+        "active_sources": [site.name for site in settings.sites if site.enabled],
+    }
+
+
 @app.post("/trigger-scrape", response_model=TriggerScrapeResponse)
+@app.post("/api/trigger-scrape", response_model=TriggerScrapeResponse)
 async def trigger_scrape(background_tasks: BackgroundTasks) -> TriggerScrapeResponse:
     background_tasks.add_task(_run_scrape_job)
     return TriggerScrapeResponse(status="queued", message="Scrape task has been queued.")

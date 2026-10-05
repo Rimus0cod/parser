@@ -87,8 +87,8 @@ export interface TriggerScrapeResponse {
 export interface HealthStatus {
   status: string;
   app: string;
-  redis: string;
-  database: string;
-  uptime: number;
-  timestamp: string;
+  redis?: string;
+  database?: string;
+  uptime?: number;
+  timestamp?: string;
 }

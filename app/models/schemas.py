@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
@@ -21,7 +23,12 @@ class Lead(BaseModel):
     ad_type: str
     contact_name: str
     contact_email: str
+    status: Literal["New", "Qualified", "Contacted", "Pending"] = "New"
     updated_at: datetime | None = None
+
+
+class LeadStatusUpdate(BaseModel):
+    status: Literal["New", "Qualified", "Contacted", "Pending"]
 
 
 class Agency(BaseModel):

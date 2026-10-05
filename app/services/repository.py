@@ -50,7 +50,7 @@ async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
                 await cur.execute(
                     """
                     SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                           phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                           phone, seller_name, ad_type, contact_name, contact_email, status, updated_at
                     FROM listings
                     ORDER BY date_seen DESC, updated_at DESC
                     LIMIT %s
@@ -73,9 +73,21 @@ async def list_leads(limit: int = 100) -> list[dict[str, Any]]:
         "ad_type",
         "contact_name",
         "contact_email",
+        "status",
         "updated_at",
     ]
     return [dict(zip(keys, row, strict=False)) for row in rows]
+
+
+async def update_lead_status(ad_id: str, status: str) -> bool:
+    async with mysql_pool() as pool:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE listings SET status = %s WHERE ad_id = %s",
+                    (status, ad_id),
+                )
+                return cur.rowcount > 0
 
 
 async def list_agencies(limit: int = 100) -> list[dict[str, Any]]:
@@ -107,7 +119,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
                     await cur.execute(
                         """
                         SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                               phone, seller_name, ad_type, contact_name, contact_email, status, updated_at
                         FROM listings
                         WHERE date_seen >= %s AND location LIKE %s
                         ORDER BY date_seen DESC, updated_at DESC
@@ -118,7 +130,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
                     await cur.execute(
                         """
                         SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                               phone, seller_name, ad_type, contact_name, contact_email, status, updated_at
                         FROM listings
                         WHERE date_seen >= %s
                         ORDER BY date_seen DESC, updated_at DESC
@@ -141,6 +153,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
         "ad_type",
         "contact_name",
         "contact_email",
+        "status",
         "updated_at",
     ]
     return [dict(zip(keys, row, strict=False)) for row in rows]
@@ -153,7 +166,7 @@ async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
                 await cur.execute(
                     """
                     SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                           phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                           phone, seller_name, ad_type, contact_name, contact_email, status, updated_at
                     FROM listings
                     WHERE ad_id = %s
                     LIMIT 1
@@ -179,6 +192,7 @@ async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
         "ad_type",
         "contact_name",
         "contact_email",
+        "status",
         "updated_at",
     ]
     return dict(zip(keys, row, strict=False))
