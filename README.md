@@ -11,6 +11,7 @@ Current runtime includes:
 - `api` on `FastAPI`
 - `scraper` as a background async worker
 - `streamlit_ui` for internal operators
+- React/Vite dashboard for the web frontend
 - `mysql` for persistent storage
 - `redis` for worker state and operational flags
 
@@ -401,11 +402,20 @@ Run worker:
 poetry run python -m app.scraper_worker
 ```
 
-Run UI:
+Run the internal Streamlit UI:
 
 ```bash
 poetry run streamlit run app/ui/streamlit_app.py
 ```
+
+Run the React dashboard against the FastAPI backend:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite proxies `/api/*` requests to `http://127.0.0.1:8000` during local development. The React dashboard does not use a separate mock/Express backend.
 
 Static checks:
 
