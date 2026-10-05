@@ -5,7 +5,7 @@ import random
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Sequence
+from typing import Any, Callable, Sequence
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
@@ -16,16 +16,21 @@ from app.core.logging import get_logger
 
 try:
     from utils import (
-        extract_names,
-        extract_phone_numbers,
-        looks_like_person_name,
-        normalize_phone_number,
+        extract_names as _extract_names,
+        extract_phone_numbers as _extract_phone_numbers,
+        looks_like_person_name as _looks_like_person_name,
+        normalize_phone_number as _normalize_phone_number,
     )
 except ImportError:  # pragma: no cover - fallback path for isolated runtimes
-    extract_names = None
-    extract_phone_numbers = None
-    looks_like_person_name = None
-    normalize_phone_number = None
+    _extract_names = None
+    _extract_phone_numbers = None
+    _looks_like_person_name = None
+    _normalize_phone_number = None
+
+extract_names: Callable[[str], list[str]] | None = _extract_names
+extract_phone_numbers: Callable[[str], list[str]] | None = _extract_phone_numbers
+looks_like_person_name: Callable[[str], bool] | None = _looks_like_person_name
+normalize_phone_number: Callable[[str], str] | None = _normalize_phone_number
 
 logger = get_logger("async_scraper")
 
@@ -114,7 +119,7 @@ class BaseScraper:
         )
         self._proxy_index = 0
 
-    def _get_client_kwargs(self) -> dict[str, object]:
+    def _get_client_kwargs(self) -> dict[str, Any]:
         headers = {
             "User-Agent": self._pick_user_agent(),
             "Accept": (
@@ -162,6 +167,17 @@ class BaseScraper:
             return proxy
         return random.choice(pool)
 
+    @staticmethod
+    def _attr_str(tag: Tag | None, name: str, default: str = "") -> str:
+        if tag is None:
+            return default
+        value = tag.get(name)
+        if value is None:
+            return default
+        if isinstance(value, list):
+            return " ".join(str(item) for item in value)
+        return str(value)
+
     async def scrape(self) -> list[ScrapedListing]:
         today = date.today().isoformat()
         async with httpx.AsyncClient(**self._get_client_kwargs()) as client:
@@ -175,7 +191,7 @@ class BaseScraper:
             listings: list[ScrapedListing] = []
             seen_ids: set[str] = set()
             for result in page_results:
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     logger.exception(
                         "Page scraping failed",
                         site=self.site_config.name,
@@ -298,7 +314,7 @@ class BaseScraper:
         soup = BeautifulSoup(html, "html.parser")
         exact_cards = soup.select("article.product-classic")
         if exact_cards:
-            results: list[ScrapedListing] = []
+            exact_results: list[ScrapedListing] = []
             seen_ids: set[str] = set()
             for article in exact_cards:
                 listing = self._parse_imoti_card_exact(article, base_url)
@@ -306,8 +322,8 @@ class BaseScraper:
                     continue
                 seen_ids.add(listing.ad_id)
                 if self._passes_filters(listing):
-                    results.append(listing)
-            return results
+                    exact_results.append(listing)
+            return exact_results
 
         soup = BeautifulSoup(html, "lxml")
         links = soup.select(self.site_config.selectors.get("link", "a[href*='/наеми/']"))
@@ -315,7 +331,7 @@ class BaseScraper:
         seen_links: set[str] = set()
 
         for link_el in links:
-            link = self._normalize_link(base_url, link_el.get("href"))
+            link = self._normalize_link(base_url, self._attr_str(link_el, "href"))
             if not link or link in seen_links:
                 continue
             seen_links.add(link)
@@ -347,7 +363,7 @@ class BaseScraper:
         if title_anchor is None:
             return None
 
-        link = self._normalize_link(base_url, title_anchor.get("href"))
+        link = self._normalize_link(base_url, self._attr_str(title_anchor, "href"))
         if not link:
             return None
 
@@ -416,7 +432,7 @@ class BaseScraper:
         if link_el is None:
             return None
 
-        link = self._normalize_link(base_url, link_el.get("href"))
+        link = self._normalize_link(base_url, self._attr_str(link_el, "href"))
         if not link:
             return None
 
@@ -430,7 +446,7 @@ class BaseScraper:
             title = self._title_from_url(link)
 
         image = card.select_one("a.avn_image img[alt], img[alt]")
-        image_alt = self._clean_text(image.get("alt", "") if image is not None else "")
+        image_alt = self._clean_text(self._attr_str(image, "alt"))
         card_text = self._clean_text(card.get_text(" ", strip=True))
         combined_text = self._clean_text(f"{title} {image_alt} {card_text}")
 
@@ -447,9 +463,7 @@ class BaseScraper:
 
         ad_id_match = re.search(
             r"adrows_(\d{4,12})",
-            " ".join(
-                card.get("id", []) if isinstance(card.get("id"), list) else [card.get("id", "")]
-            ),
+            self._attr_str(card, "id"),
         )
         ad_id = ad_id_match.group(1) if ad_id_match else self._extract_ad_id(link)
 
@@ -486,7 +500,7 @@ class BaseScraper:
         seen_links: set[str] = set()
 
         for anchor in soup.select("a[href]"):
-            link = self._normalize_link(base_url, anchor.get("href"))
+            link = self._normalize_link(base_url, self._attr_str(anchor, "href"))
             if not link or link in seen_links or not self._link_looks_like_listing(link):
                 continue
 
@@ -518,7 +532,7 @@ class BaseScraper:
         try:
             link_selector = self.site_config.selectors.get("link", "a[href]")
             link_el = card.select_one(link_selector)
-            link = self._normalize_link(base_url, link_el.get("href") if link_el else None)
+            link = self._normalize_link(base_url, self._attr_str(link_el, "href") if link_el else None)
             if not link:
                 return None
 
@@ -596,7 +610,7 @@ class BaseScraper:
 
         mailto_links = soup.select("a[href^='mailto:']")
         emails = [
-            a.get("href", "").split(":", 1)[-1].split("?", 1)[0].strip()
+            self._attr_str(a, "href").split(":", 1)[-1].split("?", 1)[0].strip()
             for a in mailto_links
             if a.get("href")
         ]
@@ -618,7 +632,7 @@ class BaseScraper:
 
         for block in soup.select("div.block-person-link"):
             icon = block.select_one("span.icon")
-            icon_classes = " ".join(icon.get("class", [])) if icon is not None else ""
+            icon_classes = self._attr_str(icon, "class")
             block_text = self._clean_text(block.get_text(" ", strip=True))
 
             if "mdi-account" in icon_classes and block_text:
@@ -629,7 +643,7 @@ class BaseScraper:
 
             if "mdi-phone" in icon_classes and not listing.phone:
                 tel = block.select_one("a[href^='tel:']")
-                phone_source = tel.get("href", "") if tel is not None else block_text
+                phone_source = self._attr_str(tel, "href") if tel is not None else block_text
                 phone = self._extract_phone_from_text(phone_source)
                 if phone:
                     listing.phone = phone
@@ -805,7 +819,7 @@ class BaseScraper:
         for root in soup.select("div.block-person-link, div.block-info, div.block-agent"):
             mail = root.select_one("a[href^='mailto:']")
             if mail is not None:
-                email = mail.get("href", "").replace("mailto:", "").split("?", 1)[0].strip()
+                email = self._attr_str(mail, "href").replace("mailto:", "").split("?", 1)[0].strip()
                 if email:
                     return email
             match = EMAIL_RE.search(root.get_text(" ", strip=True))
@@ -814,7 +828,7 @@ class BaseScraper:
 
         mail = soup.select_one("a[href^='mailto:']")
         if mail is not None:
-            email = mail.get("href", "").replace("mailto:", "").split("?", 1)[0].strip()
+            email = self._attr_str(mail, "href").replace("mailto:", "").split("?", 1)[0].strip()
             if email:
                 return email
 
@@ -875,7 +889,7 @@ class BaseScraper:
     def _extract_phone_from_detail_soup(self, soup: BeautifulSoup) -> str:
         tel_link = soup.select_one("a[href^='tel:']")
         if tel_link is not None:
-            phone = self._extract_phone_from_text(tel_link.get("href", ""))
+            phone = self._extract_phone_from_text(self._attr_str(tel_link, "href"))
             if phone:
                 return phone
 
@@ -976,7 +990,7 @@ class BaseScraper:
         image = card.select_one("img[src], img[data-src]")
         if image is None:
             return ""
-        return self._normalize_link(base_url, image.get("src") or image.get("data-src"))
+        return self._normalize_link(base_url, self._attr_str(image, "src") or self._attr_str(image, "data-src"))
 
     def _extract_seller_name(self, card: Tag | None) -> str:
         if card is None:
@@ -1003,7 +1017,7 @@ class BaseScraper:
     def _extract_phone_from_imoti_card(self, article: Tag) -> str:
         tel_link = article.select_one('a[href^="tel:"]')
         if tel_link:
-            phone = self._extract_phone_from_text(tel_link.get("href", ""))
+            phone = self._extract_phone_from_text(self._attr_str(tel_link, "href"))
             if phone:
                 return phone
 
@@ -1079,7 +1093,7 @@ class MultiSiteScraper:
 
         all_listings: list[ScrapedListing] = []
         for index, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.exception(
                     "Site scrape failed",
                     site=self.scrapers[index].site_config.name,
