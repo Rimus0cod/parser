@@ -46,7 +46,9 @@ async def send_to_integrations(listings: list[ScrapedListing]) -> None:
     if webhook_integration is not None:
         try:
             results = await webhook_integration.send_batch_leads(listings)
-            logger.info("Webhook batch send completed", count=len(listings), success_count=sum(results))
+            logger.info(
+                "Webhook batch send completed", count=len(listings), success_count=sum(results)
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Webhook integration failed", error=str(exc))
 
