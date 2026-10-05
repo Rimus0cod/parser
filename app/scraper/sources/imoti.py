@@ -159,18 +159,14 @@ class ImotiSourceParser:
         price_el = article.select_one(".product-classic-price")
         if price_el:
             price_lines = [
-                line.strip()
-                for line in price_el.get_text("\n").splitlines()
-                if line.strip()
+                line.strip() for line in price_el.get_text("\n").splitlines() if line.strip()
             ]
             price = price_lines[0] if price_lines else ""
         else:
             price = ""
 
         location_el = article.select_one(".btext")
-        location = context._clean_text(
-            location_el.get_text(strip=True) if location_el else ""
-        )
+        location = context._clean_text(location_el.get_text(strip=True) if location_el else "")
 
         size = ""
         for li in article.select(".product-classic-list li"):
@@ -215,11 +211,7 @@ class ImotiSourceParser:
 
             if "mdi-phone" in icon_classes and not listing.phone:
                 tel = block.select_one("a[href^='tel:']")
-                phone_source = (
-                    context._attr_str(tel, "href")
-                    if tel is not None
-                    else block_text
-                )
+                phone_source = context._attr_str(tel, "href") if tel is not None else block_text
                 phone = context._extract_phone_from_text(phone_source)
                 if phone:
                     listing.phone = phone
@@ -265,9 +257,7 @@ class ImotiSourceParser:
         context = self._context
         tel_link = article.select_one('a[href^="tel:"]')
         if tel_link:
-            phone = context._extract_phone_from_text(
-                context._attr_str(tel_link, "href")
-            )
+            phone = context._extract_phone_from_text(context._attr_str(tel_link, "href"))
             if phone:
                 return phone
 
@@ -280,9 +270,7 @@ class ImotiSourceParser:
         ):
             element = article.select_one(selector)
             if element is not None:
-                phone = context._extract_phone_from_text(
-                    element.get_text(" ", strip=True)
-                )
+                phone = context._extract_phone_from_text(element.get_text(" ", strip=True))
                 if phone:
                     return phone
 
@@ -313,9 +301,7 @@ class ImotiSourceParser:
 
         if looks_like_person_name is not None:
             chunks = [
-                context._clean_text(chunk)
-                for chunk in text_content.split("  ")
-                if chunk.strip()
+                context._clean_text(chunk) for chunk in text_content.split("  ") if chunk.strip()
             ]
             for chunk in chunks:
                 if looks_like_person_name(chunk):
@@ -357,9 +343,6 @@ class ImotiSourceParser:
             return False
         if any(word in normalized for word in PROPERTY_NAME_TOKENS):
             return False
-        if any(
-            token in normalized
-            for token in ("кв.м", "месец", "eur", "лв", "€", "$")
-        ):
+        if any(token in normalized for token in ("кв.м", "месец", "eur", "лв", "€", "$")):
             return False
         return True
