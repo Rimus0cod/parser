@@ -129,7 +129,7 @@ async def scraper_stats() -> dict[str, object]:
         "last_total_scraped": int(stats["scrape:last_total_scraped"] or 0),
         "last_written": int(stats["scrape:last_written"] or 0),
         "last_error": stats["scrape:last_error"],
-        "active_sources": [site.name for site in settings.active_sites],
+        "active_sources": [site.name for site in settings.sites if site.enabled],
     }
 
 
@@ -141,4 +141,3 @@ async def trigger_scrape(background_tasks: BackgroundTasks) -> TriggerScrapeResp
 
 
 app.include_router(voice_router)
-app.include_router(voice_router, prefix="/api")
