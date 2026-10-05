@@ -32,10 +32,13 @@ jobs:
           poetry install --with dev
 
       - name: Ruff
-        run: poetry run ruff check app/ integrations/ utils.py
+        run: poetry run ruff check app/ integrations/ utils.py tests/test_alo_source_parser.py
 
       - name: Ruff format check
-        run: poetry run ruff format --check app/ integrations/ utils.py
+        run: poetry run ruff format --check app/ integrations/ utils.py tests/test_alo_source_parser.py
+
+      - name: ALO source parser regression test
+        run: poetry run python -m unittest discover -s tests -p "test_alo_source_parser.py"
 
   typing:
     runs-on: ubuntu-latest
