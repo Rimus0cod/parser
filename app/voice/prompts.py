@@ -6,8 +6,11 @@ from typing import Any
 
 from app.voice.extractors import QUESTION_SEQUENCE
 
+texttospeech: Any
 try:
-    from google.cloud import texttospeech
+    from google.cloud import texttospeech as _texttospeech
+
+    texttospeech = _texttospeech
 except ImportError:  # pragma: no cover - optional dependency path
     texttospeech = None
 

@@ -56,8 +56,7 @@ jobs:
           poetry config virtualenvs.create false
           poetry install --with dev
 
-      - name: MyPy (known typing debt)
-        continue-on-error: true
+      - name: MyPy
         run: poetry run mypy app/ integrations/
 
   frontend:

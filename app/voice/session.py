@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 
 class VoiceSessionStore:
@@ -66,7 +66,7 @@ class VoiceSessionStore:
             return None
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
-        return json.loads(raw)
+        return cast(dict[str, Any], json.loads(raw))
 
     def save_session(self, state: dict[str, Any]) -> None:
         state["updated_at"] = self._now()

@@ -139,7 +139,7 @@ class AmoCrmIntegration:
             if response.status_code in [200, 201]:
                 result = response.json()
                 if "id" in result["add"][0]:
-                    lead_id = result["add"][0]["id"]
+                    lead_id = int(result["add"][0]["id"])
                     logger.info(f"Successfully created AmoCRM lead with ID: {lead_id}")
                     return lead_id
                 else:

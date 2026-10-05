@@ -67,11 +67,11 @@ async def send_to_integrations(listings: list[ScrapedListing]) -> None:
     bitrix24_integration = get_bitrix24_integration()
     if bitrix24_integration is not None:
         try:
-            successful_ids = await bitrix24_integration.send_batch_deals(listings)
+            successful_deal_ids = await bitrix24_integration.send_batch_deals(listings)
             logger.info(
                 "Bitrix24 batch send completed",
                 count=len(listings),
-                success_count=len(successful_ids),
+                success_count=len(successful_deal_ids),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Bitrix24 integration failed", error=str(exc))

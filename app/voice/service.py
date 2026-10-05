@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from datetime import UTC, datetime, timezone
 from io import StringIO
-from typing import Any
+from typing import Any, cast
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -131,7 +131,7 @@ class VoiceService:
             logger.warning("Twilio request validation skipped because twilio is not installed.")
             return True
         validator = RequestValidator(self._settings.twilio_auth_token)
-        return validator.validate(url, params, signature)
+        return bool(validator.validate(url, params, signature))
 
     async def start_listing_call(
         self, listing_ad_id: str, initiated_by: str = "api"
@@ -202,7 +202,7 @@ class VoiceService:
     async def bootstrap_session(self, voice_call_id: int, call_sid: str) -> dict[str, Any]:
         existing = self._session_store.get_session(call_sid)
         if existing is not None:
-            return existing
+            return cast(dict[str, Any], existing)
 
         voice_call = await repository.get_voice_call(voice_call_id)
         if voice_call is None:
@@ -241,7 +241,7 @@ class VoiceService:
         session = self._session_store.get_session(call_sid)
         if session is None:
             raise RuntimeError("Voice session was not created.")
-        return session
+        return cast(dict[str, Any], session)
 
     async def persist_session_snapshot(self, call_sid: str, *, status: str | None = None) -> None:
         session = self._session_store.get_session(call_sid)

@@ -64,7 +64,7 @@ class WebhookIntegration:
 
         success_results = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Error sending to webhook {self.config.urls[i]}: {result}")
                 success_results.append(False)
             else:
@@ -107,7 +107,7 @@ class WebhookIntegration:
 
         success_results = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Error sending to webhook {self.config.urls[i]}: {result}")
                 success_results.append(False)
             else:

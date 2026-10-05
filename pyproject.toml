@@ -35,6 +35,8 @@ pandas = "^2.2.0"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.4"
 mypy = "^1.13.0"
+types-PyMySQL = "^1.1.0.20240524"
+types-PyYAML = "^6.0.12.20240917"
 
 [tool.poetry.group.legacy]
 optional = true
