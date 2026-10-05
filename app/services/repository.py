@@ -130,7 +130,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
                     await cur.execute(
                         """
                         SELECT ad_id, date_seen, title, price, location, size, link, source_site,
-                               phone, seller_name, ad_type, contact_name, contact_email, updated_at
+                               phone, seller_name, ad_type, contact_name, contact_email, status, updated_at
                         FROM listings
                         WHERE date_seen >= %s
                         ORDER BY date_seen DESC, updated_at DESC
@@ -153,6 +153,7 @@ async def list_leads_by_city_and_days(city: str | None, days: int) -> list[dict[
         "ad_type",
         "contact_name",
         "contact_email",
+        "status",
         "updated_at",
     ]
     return [dict(zip(keys, row, strict=False)) for row in rows]
@@ -191,6 +192,7 @@ async def get_listing_by_ad_id(ad_id: str) -> dict[str, Any] | None:
         "ad_type",
         "contact_name",
         "contact_email",
+        "status",
         "updated_at",
     ]
     return dict(zip(keys, row, strict=False))
