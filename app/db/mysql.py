@@ -68,6 +68,7 @@ async def init_schema() -> None:
                         ad_type VARCHAR(50),
                         contact_name VARCHAR(255),
                         contact_email VARCHAR(255),
+                        status VARCHAR(32) NOT NULL DEFAULT 'New',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
@@ -80,6 +81,19 @@ async def init_schema() -> None:
                             """
                             ALTER TABLE listings
                             ADD COLUMN source_site VARCHAR(120) NOT NULL DEFAULT '' AFTER link
+                            """
+                        )
+                    except OperationalError as exc:
+                        if exc.args and exc.args[0] != MYSQL_DUPLICATE_COLUMN_ERROR:
+                            raise
+
+                await cur.execute("SHOW COLUMNS FROM listings LIKE 'status'")
+                if await cur.fetchone() is None:
+                    try:
+                        await cur.execute(
+                            """
+                            ALTER TABLE listings
+                            ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'New' AFTER contact_email
                             """
                         )
                     except OperationalError as exc:
