@@ -3,22 +3,28 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import structlog
 
 try:
-    import sentry_sdk
-    from sentry_sdk.integrations.aiohttp import AioHttpIntegration
-    from sentry_sdk.integrations.httpx import HttpxIntegration
-    from sentry_sdk.integrations.logging import LoggingIntegration
+    import sentry_sdk as _sentry_sdk
+    from sentry_sdk.integrations.aiohttp import AioHttpIntegration as _AioHttpIntegration
+    from sentry_sdk.integrations.httpx import HttpxIntegration as _HttpxIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration as _LoggingIntegration
 
     SENTRY_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency path
-    sentry_sdk = None
-    LoggingIntegration = None
-    AioHttpIntegration = None
-    HttpxIntegration = None
+    _sentry_sdk = None
+    _LoggingIntegration = None
+    _AioHttpIntegration = None
+    _HttpxIntegration = None
     SENTRY_AVAILABLE = False
+
+sentry_sdk: Any = _sentry_sdk
+LoggingIntegration: Any = _LoggingIntegration
+AioHttpIntegration: Any = _AioHttpIntegration
+HttpxIntegration: Any = _HttpxIntegration
 
 
 def configure_logging(
@@ -35,7 +41,7 @@ def configure_logging(
     if debug:
         level = logging.DEBUG
 
-    shared_processors = [
+    shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -111,4 +117,4 @@ def capture_exception(exc: BaseException) -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
