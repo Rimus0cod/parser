@@ -19,16 +19,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.core.config import get_settings
-from app.services.repository import (
+from app.core.config import get_settings  # noqa: E402
+from app.services.repository import (  # noqa: E402
     list_agencies,
     list_leads,
     list_tenant_contacts,
     list_voice_calls,
     upsert_tenant_contacts,
 )
-from app.voice.runtime import get_voice_service
-from app.voice.service import parse_tenant_contacts_csv
+from app.voice.runtime import get_voice_service  # noqa: E402
+from app.voice.service import parse_tenant_contacts_csv  # noqa: E402
 
 settings = get_settings()
 
