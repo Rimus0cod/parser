@@ -7,9 +7,11 @@ from typing import Any
 from app.voice.extractors import QUESTION_SEQUENCE
 
 try:
-    from google.cloud import texttospeech
+    from google.cloud import texttospeech as _texttospeech
 except ImportError:  # pragma: no cover - optional dependency path
-    texttospeech = None
+    _texttospeech = None
+
+texttospeech: Any = _texttospeech
 
 
 SCRIPT_NAME = "bg_listing_v1"
