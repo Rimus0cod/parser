@@ -8,29 +8,15 @@ import { VoiceCallsTab } from './components/VoiceCallsTab';
 import { TenantContactsTab } from './components/TenantContactsTab';
 import { ScraperTab } from './components/ScraperTab';
 import { Lead, LeadStatus, Agency, VoiceCall, TenantContact, ScraperStats, HealthStatus } from './types';
-import {
-  initialLeads,
-  initialAgencies,
-  initialVoiceCalls,
-  initialTenantContacts,
-  initialScraperStats,
-} from './data/initialData';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'leads' | 'agencies' | 'voice' | 'tenants' | 'scraper'>('leads');
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
-  const [agencies, setAgencies] = useState<Agency[]>(initialAgencies);
-  const [voiceCalls, setVoiceCalls] = useState<VoiceCall[]>(initialVoiceCalls);
-  const [tenantContacts, setTenantContacts] = useState<TenantContact[]>(initialTenantContacts);
-  const [scraperStats, setScraperStats] = useState<ScraperStats | null>(initialScraperStats);
-  const [health, setHealth] = useState<HealthStatus | null>({
-    status: 'ok',
-    app: 'Real Estate SaaS Core',
-    redis: 'ok (in-memory)',
-    database: 'ok (in-memory)',
-    uptime: 120,
-    timestamp: new Date().toISOString(),
-  });
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [voiceCalls, setVoiceCalls] = useState<VoiceCall[]>([]);
+  const [tenantContacts, setTenantContacts] = useState<TenantContact[]>([]);
+  const [scraperStats, setScraperStats] = useState<ScraperStats | null>(null);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
 
@@ -41,7 +27,7 @@ export function App() {
         fetch('/api/leads').then((r) => (r.ok ? r.json() : Promise.reject())),
         fetch('/api/agencies').then((r) => (r.ok ? r.json() : Promise.reject())),
         fetch('/api/voice/calls').then((r) => (r.ok ? r.json() : Promise.reject())),
-        fetch('/api/voice/tenants').then((r) => (r.ok ? r.json() : Promise.reject())),
+        fetch('/api/tenant-contacts').then((r) => (r.ok ? r.json() : Promise.reject())),
         fetch('/api/scraper/stats').then((r) => (r.ok ? r.json() : Promise.reject())),
         fetch('/api/health').then((r) => (r.ok ? r.json() : Promise.reject())),
       ]);
@@ -66,7 +52,8 @@ export function App() {
   const handleTriggerScrape = async () => {
     setIsScraping(true);
     try {
-      await fetch('/api/trigger-scrape', { method: 'POST' });
+      const response = await fetch('/api/trigger-scrape', { method: 'POST' });
+      if (!response.ok) throw new Error(`Failed to trigger scrape: ${response.status}`);
       setTimeout(async () => {
         await refreshData();
         setIsScraping(false);
@@ -106,29 +93,36 @@ export function App() {
       prev.map((l) => (l.ad_id === adId ? { ...l, status } : l))
     );
     try {
-      await fetch(`/api/leads/${encodeURIComponent(adId)}/status`, {
+      const response = await fetch(`/api/leads/${encodeURIComponent(adId)}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
+      if (!response.ok) throw new Error(`Failed to update lead status: ${response.status}`);
     } catch {
       await refreshData();
     }
   };
 
   const handleImportTenants = async (rows: Array<{ name: string; phone: string; notes: string }>) => {
-    try {
-      const res = await fetch('/api/voice/tenants/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rows),
-      });
-      if (res.ok) {
-        await refreshData();
-      }
-    } catch {
-      // fallback
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const csv = [
+      'name,phone,notes',
+      ...rows.map((row) => [row.name, row.phone, row.notes].map(escapeCsv).join(',')),
+    ].join('\n');
+
+    const res = await fetch('/api/tenant-contacts/import?filename=dashboard.csv', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'X-Filename': 'dashboard.csv',
+      },
+      body: csv,
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to import tenant contacts: ${res.status}`);
     }
+    await refreshData();
   };
 
   interface TabItem {
@@ -220,7 +214,7 @@ export function App() {
       <footer className="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500 bg-slate-900/60">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>Real Estate SaaS Core &copy; 2026. Production lead scanner and outbound voice qualification system.</span>
-          <span className="font-mono text-slate-400">Node.js 22 Runtime &bull; Express + Vite SPA</span>
+          <span className="font-mono text-slate-400">React + Vite &bull; FastAPI backend</span>
         </div>
       </footer>
     </div>
